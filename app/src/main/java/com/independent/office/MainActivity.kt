@@ -336,7 +336,7 @@ private fun OfficeHome() {
             }
         }
         if (showFindReplaceDialog) {
-            val matchCount = if (findText.isEmpty()) 0 else editorText.windowed(findText.length, 1, partialWindows = false).count { it.equals(findText, ignoreCase = true) }
+            val matchCount = if (findText.isEmpty()) 0 else Regex(Regex.escape(findText), RegexOption.IGNORE_CASE).findAll(editorText).count()
             AlertDialog(
                 onDismissRequest = { showFindReplaceDialog = false },
                 title = { Text("Find and replace") },
@@ -361,7 +361,7 @@ private fun OfficeHome() {
                     TextButton(onClick = {
                         if (findText.isNotEmpty()) {
                             val before = editorText
-                            editorText = editorText.replace(Regex(Regex.escape(findText), RegexOption.IGNORE_CASE), replacementText)
+                            editorText = Regex(Regex.escape(findText), RegexOption.IGNORE_CASE).replace(editorText) { replacementText }
                             val changed = before != editorText
                             status = if (changed) "Replaced matching text. Save to keep changes." else "No matching text found."
                         }
