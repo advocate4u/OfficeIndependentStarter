@@ -107,6 +107,7 @@ private fun OfficeHome() {
     var homeSearch by remember { mutableStateOf("") }
     var editorFontSize by remember { mutableIntStateOf(context.getSharedPreferences("office_independent", android.content.Context.MODE_PRIVATE).getInt("editor_font_size", 16).coerceIn(10, 32)) }
     var csvTableMode by remember { mutableStateOf(false) }
+    var csvFilter by remember { mutableStateOf("") }
     var recentFilter by remember { mutableStateOf("All") }
     var undoStack by remember { mutableStateOf(emptyList<String>()) }
     var redoStack by remember { mutableStateOf(emptyList<String>()) }
@@ -220,6 +221,7 @@ private fun OfficeHome() {
         fileName = queryDisplayName(uri, context.contentResolver)
         isPdf = context.contentResolver.getType(uri) == "application/pdf" || fileName.endsWith(".pdf", true)
         csvTableMode = !isPdf && fileName.endsWith(".csv", true)
+        csvFilter = ""
         rememberRecent(uri, fileName, isPdf)
         if (isPdf) {
             pdfBookmarks = loadPdfBookmarks(context, uri.toString())
@@ -638,9 +640,18 @@ private fun OfficeHome() {
                         } else status = "Add at least two data rows before sorting."
                     }, modifier = Modifier.weight(1f)) { Text("Sort Z–A") }
                 }
-                val csvRows = parseCsv(editorText).take(100)
+                OutlinedTextField(
+                    value = csvFilter,
+                    onValueChange = { csvFilter = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("Filter rows by any cell") }
+                )
+                val csvRows = parseCsv(editorText).mapIndexed { index, row -> index to row }
+                    .filter { (index, row) -> csvFilter.isBlank() || index == 0 || row.any { it.contains(csvFilter, ignoreCase = true) } }
+                    .take(100)
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    csvRows.forEachIndexed { rowIndex, row ->
+                    csvRows.forEach { (rowIndex, row) ->
                         Row(
                             modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
