@@ -10,8 +10,8 @@ android {
         applicationId = "com.independent.office"
         minSdk = 26
         targetSdk = 35
-        versionCode = 34
-        versionName = "0.34.0"
+        versionCode = 35
+        versionName = "0.35.0"
     }
     buildFeatures { compose = true }
     compileOptions {
