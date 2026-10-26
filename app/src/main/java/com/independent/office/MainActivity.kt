@@ -89,6 +89,7 @@ private fun OfficeHome() {
     var isPdf by remember { mutableStateOf(false) }
     var pdfPage by remember { mutableIntStateOf(0) }
     var pdfRotation by remember { mutableIntStateOf(0) }
+    var pdfBookmarks by remember { mutableStateOf(emptySet<Int>()) }
     var pdfPageCount by remember { mutableIntStateOf(0) }
     var pdfBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var zoom by remember { mutableIntStateOf(100) }
@@ -151,6 +152,14 @@ private fun OfficeHome() {
             .edit().putInt("editor_font_size", safeSize).apply()
     }
 
+    fun togglePdfBookmark(page: Int) {
+        val uri = selectedUri ?: return
+        val updated = if (page in pdfBookmarks) pdfBookmarks - page else pdfBookmarks + page
+        pdfBookmarks = updated
+        savePdfBookmarks(context, uri.toString(), updated)
+        status = if (page in updated) "Bookmarked PDF page ${page + 1}." else "Removed bookmark for page ${page + 1}."
+    }
+
 
     fun renderPdf(uri: Uri, pageIndex: Int, scalePercent: Int) {
         scope.launch {
@@ -200,6 +209,7 @@ private fun OfficeHome() {
         isPdf = context.contentResolver.getType(uri) == "application/pdf" || fileName.endsWith(".pdf", true)
         rememberRecent(uri, fileName, isPdf)
         if (isPdf) {
+            pdfBookmarks = loadPdfBookmarks(context, uri.toString())
             editorText = ""
             pdfPage = 0
             pdfRotation = 0
@@ -435,6 +445,24 @@ private fun OfficeHome() {
                 },
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Rotate page 90° · ${pdfRotation}°") }
+            OutlinedButton(
+                onClick = { togglePdfBookmark(pdfPage) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (pdfPage in pdfBookmarks) "★ Remove bookmark · Page ${pdfPage + 1}" else "☆ Bookmark page ${pdfPage + 1}")
+            }
+            if (pdfBookmarks.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    pdfBookmarks.sorted().forEach { bookmarkedPage ->
+                        OutlinedButton(onClick = { selectedUri?.let { renderPdf(it, bookmarkedPage, zoom) } }) {
+                            Text("Page ${bookmarkedPage + 1}")
+                        }
+                    }
+                }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 OutlinedButton(onClick = {
                     zoom = (zoom - 25).coerceAtLeast(50)
@@ -659,6 +687,22 @@ private fun saveRecentDocuments(context: android.content.Context, documents: Lis
 }
 
 
+
+private fun loadPdfBookmarks(context: android.content.Context, uri: String): Set<Int> {
+    return runCatching {
+        val json = context.getSharedPreferences("office_independent", android.content.Context.MODE_PRIVATE)
+            .getString("pdf_bookmarks:" + uri, "[]") ?: "[]"
+        val array = JSONArray(json)
+        (0 until array.length()).mapNotNull { array.optInt(it, -1).takeIf { page -> page >= 0 } }.toSet()
+    }.getOrDefault(emptySet())
+}
+
+private fun savePdfBookmarks(context: android.content.Context, uri: String, pages: Set<Int>) {
+    val array = JSONArray()
+    pages.sorted().forEach { array.put(it) }
+    context.getSharedPreferences("office_independent", android.content.Context.MODE_PRIVATE)
+        .edit().putString("pdf_bookmarks:" + uri, array.toString()).apply()
+}
 
 private fun loadFavoriteUris(context: android.content.Context): Set<String> {
     return runCatching {
