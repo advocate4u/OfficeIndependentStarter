@@ -535,6 +535,19 @@ private fun OfficeHome() {
             }
             if (csvTableMode && fileName.endsWith(".csv", true)) {
                 Text("CSV table · edit cells directly (first 100 rows and 20 columns shown)", style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = {
+                        val rows = parseCsv(editorText).map { it.toMutableList() }.toMutableList()
+                        val columnCount = rows.maxOfOrNull { it.size } ?: 1
+                        rows.add(MutableList(columnCount) { "" })
+                        updateEditorText(serializeCsv(rows))
+                    }, modifier = Modifier.weight(1f)) { Text("＋ Add row") }
+                    OutlinedButton(onClick = {
+                        val rows = parseCsv(editorText).map { it.toMutableList() }.toMutableList()
+                        rows.forEach { it.add("") }
+                        updateEditorText(serializeCsv(rows))
+                    }, modifier = Modifier.weight(1f)) { Text("＋ Add column") }
+                }
                 val csvRows = parseCsv(editorText).take(100)
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     csvRows.forEachIndexed { rowIndex, row ->
