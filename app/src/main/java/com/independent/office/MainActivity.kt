@@ -548,6 +548,20 @@ private fun OfficeHome() {
                         updateEditorText(serializeCsv(rows))
                     }, modifier = Modifier.weight(1f)) { Text("＋ Add column") }
                 }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = {
+                        val rows = parseCsv(editorText).map { it.toMutableList() }.toMutableList()
+                        if (rows.size > 1) rows.removeAt(rows.lastIndex) else status = "A CSV needs at least one row."
+                        updateEditorText(serializeCsv(rows))
+                    }, modifier = Modifier.weight(1f)) { Text("− Remove last row") }
+                    OutlinedButton(onClick = {
+                        val rows = parseCsv(editorText).map { it.toMutableList() }.toMutableList()
+                        rows.forEach { row ->
+                            if (row.size > 1) row.removeAt(row.lastIndex) else row[0] = ""
+                        }
+                        updateEditorText(serializeCsv(rows))
+                    }, modifier = Modifier.weight(1f)) { Text("− Remove last column") }
+                }
                 val csvRows = parseCsv(editorText).take(100)
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     csvRows.forEachIndexed { rowIndex, row ->
