@@ -287,7 +287,11 @@ private fun OfficeHome() {
                 val saved = withContext(Dispatchers.IO) {
                     runCatching {
                         context.contentResolver.openOutputStream(uri)?.use { output ->
-                            writeTextPdf(editorText, fileName, output)
+                            if (fileName.endsWith(".csv", true) && csvTableMode) {
+                                writeCsvPdf(parseCsv(editorText), fileName, output)
+                            } else {
+                                writeTextPdf(editorText, fileName, output)
+                            }
                         } ?: error("Could not create PDF")
                     }
                 }
@@ -728,7 +732,7 @@ private fun OfficeHome() {
             ) {
                 androidx.compose.material3.Icon(Icons.Default.PictureAsPdf, contentDescription = null)
                 Spacer(Modifier.size(8.dp))
-                Text("Export text to PDF")
+                Text(if (fileName.endsWith(".csv", true) && csvTableMode) "Export CSV table to PDF" else "Export text to PDF")
             }
             OutlinedButton(
                 onClick = {
@@ -832,6 +836,81 @@ private fun OfficeHome() {
 private fun suggestedPdfName(currentName: String): String {
     val base = currentName.substringBeforeLast('.', currentName).ifBlank { "document" }
     return "${base}.pdf"
+}
+
+private fun writeCsvPdf(rows: List<List<String>>, title: String, output: java.io.OutputStream) {
+    val document = PdfDocument()
+    val pageWidth = 595
+    val pageHeight = 842
+    val margin = 28f
+    val cellHeight = 26f
+    val columnCount = (rows.maxOfOrNull { it.size } ?: 1).coerceIn(1, 6)
+    val columnWidth = (pageWidth - 2 * margin) / columnCount
+    val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.BLACK
+        textSize = 9f
+    }
+    val headerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.BLACK
+        textSize = 9f
+        typeface = android.graphics.Typeface.DEFAULT_BOLD
+    }
+    val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.BLACK
+        textSize = 11f
+        typeface = android.graphics.Typeface.DEFAULT_BOLD
+    }
+    val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.LTGRAY
+        style = Paint.Style.FILL
+    }
+    val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.DKGRAY
+        style = Paint.Style.STROKE
+        strokeWidth = 0.6f
+    }
+    val footerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.DKGRAY
+        textSize = 9f
+    }
+    var pageNumber = 1
+    var page = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
+    var canvas = page.canvas
+    fun drawHeader() {
+        canvas.drawText(title.take(70), margin, 22f, titlePaint)
+    }
+    fun drawFooter() {
+        canvas.drawText("Page $pageNumber", pageWidth - 80f, pageHeight - 16f, footerPaint)
+    }
+    var y = 44f
+    drawHeader()
+    fun nextPage() {
+        drawFooter()
+        document.finishPage(page)
+        pageNumber++
+        page = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
+        canvas = page.canvas
+        drawHeader()
+        y = 44f
+    }
+    rows.take(500).forEachIndexed { rowIndex, row ->
+        if (y + cellHeight > pageHeight - margin) nextPage()
+        for (columnIndex in 0 until columnCount) {
+            val left = margin + columnIndex * columnWidth
+            val rect = android.graphics.RectF(left, y, left + columnWidth, y + cellHeight)
+            if (rowIndex == 0) canvas.drawRect(rect, fillPaint)
+            canvas.drawRect(rect, borderPaint)
+            val value = row.getOrNull(columnIndex).orEmpty().replace('\n', ' ').replace('\r', ' ')
+            val paint = if (rowIndex == 0) headerPaint else textPaint
+            val count = paint.breakText(value, true, columnWidth - 8f, null)
+            canvas.drawText(value.take(count), left + 4f, y + 16f, paint)
+        }
+        y += cellHeight
+    }
+    drawFooter()
+    document.finishPage(page)
+    document.writeTo(output)
+    document.close()
 }
 
 private fun writeTextPdf(text: String, title: String, output: java.io.OutputStream) {
