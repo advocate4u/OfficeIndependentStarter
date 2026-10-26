@@ -83,6 +83,9 @@ private fun OfficeHome() {
     var zoom by remember { mutableIntStateOf(100) }
     var showPageDialog by remember { mutableStateOf(false) }
     var pageInput by remember { mutableStateOf("1") }
+    var showFindReplaceDialog by remember { mutableStateOf(false) }
+    var findText by remember { mutableStateOf("") }
+    var replacementText by remember { mutableStateOf("") }
     var recentFiles by remember { mutableStateOf(loadRecentDocuments(context)) }
 
     fun rememberRecent(uri: Uri, name: String, pdf: Boolean) {
@@ -281,7 +284,10 @@ private fun OfficeHome() {
                 }
             }
         } else {
-            Text("Text editor", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Text("Text editor", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                OutlinedButton(onClick = { showFindReplaceDialog = true }) { Text("Find / Replace") }
+            }
             OutlinedTextField(
                 value = editorText,
                 onValueChange = { editorText = it },
@@ -328,6 +334,44 @@ private fun OfficeHome() {
                         .onFailure { status = "No compatible app found." }
                 }, modifier = Modifier.fillMaxWidth()) { Text("Open in compatible app") }
             }
+        }
+        if (showFindReplaceDialog) {
+            val matchCount = if (findText.isEmpty()) 0 else editorText.windowed(findText.length, 1, partialWindows = false).count { it.equals(findText, ignoreCase = true) }
+            AlertDialog(
+                onDismissRequest = { showFindReplaceDialog = false },
+                title = { Text("Find and replace") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = findText,
+                            onValueChange = { findText = it },
+                            label = { Text("Find text") },
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = replacementText,
+                            onValueChange = { replacementText = it },
+                            label = { Text("Replace with") },
+                            singleLine = true
+                        )
+                        Text("$matchCount match(es), case-insensitive", style = MaterialTheme.typography.bodySmall)
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        if (findText.isNotEmpty()) {
+                            val before = editorText
+                            editorText = editorText.replace(Regex(Regex.escape(findText), RegexOption.IGNORE_CASE), replacementText)
+                            val changed = before != editorText
+                            status = if (changed) "Replaced matching text. Save to keep changes." else "No matching text found."
+                        }
+                        showFindReplaceDialog = false
+                    }) { Text("Replace all") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showFindReplaceDialog = false }) { Text("Close") }
+                }
+            )
         }
         if (showPageDialog) {
             AlertDialog(
