@@ -249,7 +249,7 @@ private fun OfficeHome() {
             val mime = context.contentResolver.getType(uri).orEmpty()
             val textLike = extension in setOf("txt", "md", "csv", "json", "xml", "html", "htm", "log", "yaml", "yml") || mime.startsWith("text/") || mime == "application/json" || mime == "application/xml"
             if (!textLike) {
-                if (extension == "docx" || extension == "pptx") {
+                if (extension == "docx" || extension == "pptx" || extension == "xlsx") {
                     scope.launch {
                         val loaded = withContext(Dispatchers.IO) {
                             runCatching {
@@ -611,14 +611,14 @@ private fun OfficeHome() {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(fileName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                    Text("Read-only text preview", style = MaterialTheme.typography.labelLarge)
+                    Text("Read-only Office preview", style = MaterialTheme.typography.labelLarge)
                     Text("Formatting, images, tables, and layout may not be represented here.", style = MaterialTheme.typography.bodySmall)
                     Text(editorText.ifBlank { "No readable text was found in this document." })
                     OutlinedButton(onClick = {
                         val uri = selectedUri
                         if (uri != null) {
                             val intent = Intent(Intent.ACTION_VIEW).apply {
-                                setDataAndType(uri, context.contentResolver.getType(uri) ?: if (fileName.endsWith(".docx", true)) "application/vnd.openxmlformats-officedocument.wordprocessingml.document" else "application/vnd.openxmlformats-officedocument.presentationml.presentation")
+                                setDataAndType(uri, context.contentResolver.getType(uri) ?: if (fileName.endsWith(".docx", true)) "application/vnd.openxmlformats-officedocument.wordprocessingml.document" else if (fileName.endsWith(".xlsx", true)) "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" else "application/vnd.openxmlformats-officedocument.presentationml.presentation")
                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             }
                             runCatching { context.startActivity(Intent.createChooser(intent, "Open in compatible app")) }
@@ -1014,7 +1014,8 @@ private fun extractOfficePreview(bytes: ByteArray, extension: String): String {
         while (entry != null) {
             val name = entry.name
             val wanted = (extension == "docx" && name == "word/document.xml") ||
-                (extension == "pptx" && Regex("ppt/slides/slide\\d+\\.xml").matches(name))
+                (extension == "pptx" && Regex("ppt/slides/slide\\d+\\.xml").matches(name)) ||
+                (extension == "xlsx" && name in setOf("xl/sharedStrings.xml", "xl/worksheets/sheet1.xml"))
             if (!entry.isDirectory && wanted) entries[name] = zip.readBytes()
             zip.closeEntry()
             entry = zip.nextEntry
@@ -1041,6 +1042,62 @@ private fun extractOfficePreview(bytes: ByteArray, extension: String): String {
         "pptx" -> entries.entries.sortedBy { Regex("slide(\\d+)").find(it.key)?.groupValues?.get(1)?.toIntOrNull() ?: Int.MAX_VALUE }
             .mapIndexed { index, entry -> "Slide ${index + 1}\n${readText(entry.value)}" }
             .joinToString("\n\n").ifBlank { error("No readable slide text was found") }
+        "xlsx" -> {
+            val sharedStrings = mutableListOf<String>()
+            entries["xl/sharedStrings.xml"]?.let { xmlBytes ->
+                val stringsParser = Xml.newPullParser()
+                stringsParser.setInput(StringReader(String(xmlBytes, Charsets.UTF_8)))
+                var current: StringBuilder? = null
+                var event = stringsParser.eventType
+                while (event != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+                    if (event == org.xmlpull.v1.XmlPullParser.START_TAG && stringsParser.name == "si") current = StringBuilder()
+                    else if (event == org.xmlpull.v1.XmlPullParser.START_TAG && stringsParser.name == "t" && current != null) current.append(stringsParser.nextText())
+                    else if (event == org.xmlpull.v1.XmlPullParser.END_TAG && stringsParser.name == "si") {
+                        sharedStrings.add(current?.toString().orEmpty())
+                        current = null
+                    }
+                    event = stringsParser.next()
+                }
+            }
+            val sheetBytes = entries["xl/worksheets/sheet1.xml"] ?: error("First worksheet XML was not found")
+            val parser = Xml.newPullParser()
+            parser.setInput(StringReader(String(sheetBytes, Charsets.UTF_8)))
+            val rows = sortedMapOf<Int, MutableMap<Int, String>>()
+            var rowNumber = 1
+            var cellRef = ""
+            var cellType = ""
+            var cellValue = StringBuilder()
+            var inCell = false
+            var event = parser.eventType
+            while (event != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+                if (event == org.xmlpull.v1.XmlPullParser.START_TAG && parser.name == "row") {
+                    rowNumber = parser.getAttributeValue(null, "r")?.toIntOrNull() ?: rowNumber
+                } else if (event == org.xmlpull.v1.XmlPullParser.START_TAG && parser.name == "c") {
+                    inCell = true
+                    cellRef = parser.getAttributeValue(null, "r").orEmpty()
+                    cellType = parser.getAttributeValue(null, "t").orEmpty()
+                    cellValue = StringBuilder()
+                } else if (event == org.xmlpull.v1.XmlPullParser.START_TAG && inCell && (parser.name == "v" || parser.name == "t")) {
+                    cellValue.append(parser.nextText())
+                } else if (event == org.xmlpull.v1.XmlPullParser.END_TAG && parser.name == "c" && inCell) {
+                    val letters = cellRef.takeWhile { it.isLetter() }.uppercase()
+                    var columnIndex = 0
+                    letters.forEach { letter -> columnIndex = columnIndex * 26 + (letter - 'A' + 1) }
+                    columnIndex -= 1
+                    if (columnIndex >= 0) {
+                        val raw = cellValue.toString()
+                        val value = if (cellType == "s") sharedStrings.getOrNull(raw.toIntOrNull() ?: -1).orEmpty() else raw
+                        rows.getOrPut(rowNumber) { mutableMapOf() }[columnIndex] = value
+                    }
+                    inCell = false
+                }
+                event = parser.next()
+            }
+            val maxColumn = rows.values.flatMap { it.keys }.maxOrNull() ?: -1
+            rows.entries.joinToString("\n") { (_, row) ->
+                serializeCsv(listOf((0..maxColumn).map { row[it].orEmpty() }))
+            }.ifBlank { error("No readable worksheet cells were found") }
+        }
         else -> error("Unsupported Office preview type")
     }
 }
