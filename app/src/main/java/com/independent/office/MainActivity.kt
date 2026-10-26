@@ -888,6 +888,19 @@ private fun OfficeHome() {
                     Text(if (csvFilter.isBlank()) "Export CSV copy" else "Export filtered rows to CSV")
                 }
             }
+            if (officePreviewOnly) {
+                OutlinedButton(
+                    onClick = {
+                        val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+                        clipboard?.setPrimaryClip(android.content.ClipData.newPlainText(fileName, editorText))
+                        status = "Office preview text copied to clipboard."
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = editorText.isNotEmpty()
+                ) {
+                    Text("Copy preview text")
+                }
+            }
             OutlinedButton(
                 onClick = {
                     val intent = Intent(Intent.ACTION_SEND).apply {
