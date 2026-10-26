@@ -700,9 +700,15 @@ private fun OfficeHome() {
                     singleLine = true,
                     label = { Text("Filter rows by any cell") }
                 )
-                val csvRows = parseCsv(editorText).mapIndexed { index, row -> index to row }
+                val filteredCsvRows = parseCsv(editorText).mapIndexed { index, row -> index to row }
                     .filter { (index, row) -> csvFilter.isBlank() || index == 0 || row.any { it.contains(csvFilter, ignoreCase = true) } }
-                    .take(100)
+                Text("Showing ${filteredCsvRows.size} of ${allCsvRows.size} rows; up to 100 displayed", style = MaterialTheme.typography.bodySmall)
+                if (csvFilter.isNotBlank()) {
+                    OutlinedButton(onClick = { csvFilter = "" }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Clear filter")
+                    }
+                }
+                val csvRows = filteredCsvRows.take(100)
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     csvRows.forEach { (rowIndex, row) ->
                         Row(
