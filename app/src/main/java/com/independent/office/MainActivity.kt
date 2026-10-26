@@ -91,6 +91,39 @@ private fun OfficeHome() {
         saveRecentDocuments(context, updated)
     }
 
+
+    fun renderPdf(uri: Uri, pageIndex: Int, scalePercent: Int) {
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                try {
+                    val pfd = context.contentResolver.openFileDescriptor(uri, "r")
+                        ?: error("Unable to open PDF")
+                    pfd.use { descriptor ->
+                        PdfRenderer(descriptor).use { renderer ->
+                            if (renderer.pageCount == 0) error("PDF has no pages")
+                            val safeIndex = pageIndex.coerceIn(0, renderer.pageCount - 1)
+                            renderer.openPage(safeIndex).use { page ->
+                                val scale = (scalePercent.coerceIn(50, 250) / 100f) *
+                                    (1000f / page.width.coerceAtLeast(1))
+                                val width = (page.width * scale).toInt().coerceIn(1, 2200)
+                                val height = (page.height * (width.toFloat() / page.width)).toInt().coerceIn(1, 3000)
+                                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                                page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                                Triple(bitmap, renderer.pageCount, safeIndex)
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    throw e
+                }
+            }
+            pdfBitmap = result.first
+            pdfPageCount = result.second
+            pdfPage = result.third
+            status = "PDF page ${result.third + 1} of ${result.second}"
+        }
+    }
+
     fun openDocument(uri: Uri) {
         selectedUri = uri
         fileName = queryDisplayName(uri, context.contentResolver)
@@ -128,37 +161,6 @@ private fun OfficeHome() {
         }
     }
 
-    fun renderPdf(uri: Uri, pageIndex: Int, scalePercent: Int) {
-        scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                try {
-                    val pfd = context.contentResolver.openFileDescriptor(uri, "r")
-                        ?: error("Unable to open PDF")
-                    pfd.use { descriptor ->
-                        PdfRenderer(descriptor).use { renderer ->
-                            if (renderer.pageCount == 0) error("PDF has no pages")
-                            val safeIndex = pageIndex.coerceIn(0, renderer.pageCount - 1)
-                            renderer.openPage(safeIndex).use { page ->
-                                val scale = (scalePercent.coerceIn(50, 250) / 100f) *
-                                    (1000f / page.width.coerceAtLeast(1))
-                                val width = (page.width * scale).toInt().coerceIn(1, 2200)
-                                val height = (page.height * (width.toFloat() / page.width)).toInt().coerceIn(1, 3000)
-                                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                                page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                                Triple(bitmap, renderer.pageCount, safeIndex)
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    throw e
-                }
-            }
-            pdfBitmap = result.first
-            pdfPageCount = result.second
-            pdfPage = result.third
-            status = "PDF page ${result.third + 1} of ${result.second}"
-        }
-    }
 
     val openLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
