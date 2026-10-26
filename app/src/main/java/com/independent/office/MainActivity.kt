@@ -652,7 +652,7 @@ private fun OfficeHome() {
                                     },
                                     modifier = Modifier.width(150.dp),
                                     singleLine = true,
-                                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = editorFontSize.sp),
+                                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = editorFontSize.sp, fontWeight = if (rowIndex == 0) FontWeight.Bold else FontWeight.Normal),
                                     placeholder = { Text("R${rowIndex + 1}C${columnIndex + 1}") }
                                 )
                             }
