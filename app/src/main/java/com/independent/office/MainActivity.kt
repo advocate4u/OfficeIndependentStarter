@@ -335,7 +335,7 @@ private fun OfficeHome() {
                     Spacer(Modifier.size(6.dp))
                     Text("Save")
                 }
-                OutlinedButton(onClick = { createLauncher.launch("document.txt") }, modifier = Modifier.weight(1f)) {
+                OutlinedButton(onClick = { createLauncher.launch(suggestedTextCopyName(fileName)) }, modifier = Modifier.weight(1f)) {
                     Text("Save copy")
                 }
             }
@@ -489,4 +489,11 @@ private fun saveDraft(context: android.content.Context, uri: Uri, text: String) 
 private fun clearDraft(context: android.content.Context, uri: Uri) {
     context.getSharedPreferences("office_independent", android.content.Context.MODE_PRIVATE)
         .edit().remove(draftKey(uri)).apply()
+}
+
+
+private fun suggestedTextCopyName(currentName: String): String {
+    val supported = setOf("txt", "md", "csv", "json", "xml", "html", "htm", "log", "yaml", "yml")
+    val extension = currentName.substringAfterLast('.', "").lowercase()
+    return if (currentName != "No file selected" && extension in supported) currentName else "document.txt"
 }
