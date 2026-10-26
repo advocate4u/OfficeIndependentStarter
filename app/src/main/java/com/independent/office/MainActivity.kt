@@ -87,6 +87,7 @@ private fun OfficeHome() {
     var findText by remember { mutableStateOf("") }
     var replacementText by remember { mutableStateOf("") }
     var recentFiles by remember { mutableStateOf(loadRecentDocuments(context)) }
+    var homeSearch by remember { mutableStateOf("") }
 
     fun rememberRecent(uri: Uri, name: String, pdf: Boolean) {
         val updated = (listOf(RecentDocument(uri.toString(), name, pdf)) + recentFiles.filterNot { it.uri == uri.toString() }).take(8)
@@ -206,10 +207,48 @@ private fun OfficeHome() {
                 Text("Free Android document utility")
             }
         }
-        Button(onClick = { openLauncher.launch(arrayOf("*/*")) }, modifier = Modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            value = homeSearch,
+            onValueChange = { homeSearch = it },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            label = { Text("Search recent documents") },
+            leadingIcon = { androidx.compose.material3.Icon(Icons.Default.Search, contentDescription = null) }
+        )
+        Text("Quick access", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            Card(Modifier.weight(1f)) {
+                Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    androidx.compose.material3.Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(28.dp))
+                    Text("Text", fontWeight = FontWeight.SemiBold)
+                    TextButton(onClick = { editorText = ""; fileName = "Untitled.txt"; selectedUri = null; isPdf = false; status = "New text document. Use Save copy to save it." }) { Text("New") }
+                }
+            }
+            Card(Modifier.weight(1f)) {
+                Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    androidx.compose.material3.Icon(Icons.Default.PictureAsPdf, contentDescription = null, modifier = Modifier.size(28.dp))
+                    Text("PDF", fontWeight = FontWeight.SemiBold)
+                    TextButton(onClick = { openLauncher.launch(arrayOf("application/pdf")) }) { Text("Open") }
+                }
+            }
+            Card(Modifier.weight(1f)) {
+                Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    androidx.compose.material3.Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(28.dp))
+                    Text("Files", fontWeight = FontWeight.SemiBold)
+                    TextButton(onClick = { openLauncher.launch(arrayOf("*/*")) }) { Text("Browse") }
+                }
+            }
+        }
+        OutlinedButton(onClick = { openLauncher.launch(arrayOf("*/*")) }, modifier = Modifier.fillMaxWidth()) {
             androidx.compose.material3.Icon(Icons.Default.FolderOpen, contentDescription = null)
             Spacer(Modifier.size(8.dp))
-            Text("Open file")
+            Text("Open any document")
+        }
+        Text("Document types", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(onClick = { openLauncher.launch(arrayOf("application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/msword")) }, modifier = Modifier.weight(1f)) { Text("Word") }
+            OutlinedButton(onClick = { openLauncher.launch(arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel", "text/csv")) }, modifier = Modifier.weight(1f)) { Text("Sheets") }
+            OutlinedButton(onClick = { openLauncher.launch(arrayOf("application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/vnd.ms-powerpoint")) }, modifier = Modifier.weight(1f)) { Text("Slides") }
         }
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -221,7 +260,7 @@ private fun OfficeHome() {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Recent files", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    recentFiles.forEach { recent ->
+                    recentFiles.filter { it.name.contains(homeSearch, ignoreCase = true) }.forEach { recent ->
                         OutlinedButton(
                             onClick = { openDocument(Uri.parse(recent.uri)) },
                             modifier = Modifier.fillMaxWidth()
