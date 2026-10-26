@@ -98,7 +98,7 @@ private fun OfficeHome() {
     var recentFiles by remember { mutableStateOf(loadRecentDocuments(context)) }
     var favoriteUris by remember { mutableStateOf(loadFavoriteUris(context)) }
     var homeSearch by remember { mutableStateOf("") }
-    var editorFontSize by remember { mutableIntStateOf(16) }
+    var editorFontSize by remember { mutableIntStateOf(context.getSharedPreferences("office_independent", android.content.Context.MODE_PRIVATE).getInt("editor_font_size", 16).coerceIn(10, 32)) }
     var recentFilter by remember { mutableStateOf("All") }
     var undoStack by remember { mutableStateOf(emptyList<String>()) }
     var redoStack by remember { mutableStateOf(emptyList<String>()) }
@@ -140,6 +140,13 @@ private fun OfficeHome() {
         favoriteUris = updated
         saveFavoriteUris(context, updated)
         status = if (uri in updated) "Added to favorites." else "Removed from favorites."
+    }
+
+    fun setEditorFontSize(size: Int) {
+        val safeSize = size.coerceIn(10, 32)
+        editorFontSize = safeSize
+        context.getSharedPreferences("office_independent", android.content.Context.MODE_PRIVATE)
+            .edit().putInt("editor_font_size", safeSize).apply()
     }
 
 
@@ -452,10 +459,10 @@ private fun OfficeHome() {
                 OutlinedButton(onClick = { redoEditor() }, enabled = redoStack.isNotEmpty(), modifier = Modifier.weight(1f)) { Text("Redo") }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(onClick = { editorFontSize = (editorFontSize - 2).coerceAtLeast(10) }, modifier = Modifier.weight(1f)) { Text("A−") }
+                OutlinedButton(onClick = { setEditorFontSize(editorFontSize - 2) }, modifier = Modifier.weight(1f)) { Text("A−") }
                 Text("Text size: ${editorFontSize}sp", modifier = Modifier.weight(1.4f), style = MaterialTheme.typography.bodyMedium)
-                OutlinedButton(onClick = { editorFontSize = (editorFontSize + 2).coerceAtMost(32) }, modifier = Modifier.weight(1f)) { Text("A+") }
-                TextButton(onClick = { editorFontSize = 16 }) { Text("Reset") }
+                OutlinedButton(onClick = { setEditorFontSize(editorFontSize + 2) }, modifier = Modifier.weight(1f)) { Text("A+") }
+                TextButton(onClick = { setEditorFontSize(16) }) { Text("Reset") }
             }
             OutlinedTextField(
                 value = editorText,
