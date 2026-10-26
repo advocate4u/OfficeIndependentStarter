@@ -315,6 +315,32 @@ private fun OfficeHome() {
         }
     }
 
+    val filteredCsvExportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val saved = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val rows = parseCsv(editorText)
+                        val visibleRows = if (csvFilter.isBlank()) rows else {
+                            rows.take(1) + rows.drop(1).filter { row ->
+                                row.any { cell -> cell.contains(csvFilter, ignoreCase = true) }
+                            }
+                        }
+                        context.contentResolver.openOutputStream(uri, "w")?.bufferedWriter(Charsets.UTF_8)?.use {
+                            it.write(serializeCsv(visibleRows))
+                        } ?: error("Could not create CSV file")
+                    }
+                }
+                if (saved.isSuccess) {
+                    rememberRecent(uri, queryDisplayName(uri, context.contentResolver), false)
+                    status = if (csvFilter.isBlank()) "CSV exported and added to Recent files." else "Filtered CSV rows exported and added to Recent files."
+                } else {
+                    status = "CSV export failed: ${saved.exceptionOrNull()?.message}"
+                }
+            }
+        }
+    }
+
     val createLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
         if (uri != null) {
             scope.launch {
@@ -757,6 +783,15 @@ private fun OfficeHome() {
                 Spacer(Modifier.size(8.dp))
                 Text(if (fileName.endsWith(".csv", true) && csvTableMode) "Export visible CSV rows to PDF" else "Export text to PDF")
             }
+            if (csvTableMode) {
+                OutlinedButton(
+                    onClick = { filteredCsvExportLauncher.launch(suggestedCsvName(fileName)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = editorText.isNotEmpty()
+                ) {
+                    Text(if (csvFilter.isBlank()) "Export CSV copy" else "Export filtered rows to CSV")
+                }
+            }
             OutlinedButton(
                 onClick = {
                     val intent = Intent(Intent.ACTION_SEND).apply {
@@ -854,6 +889,11 @@ private fun OfficeHome() {
         Divider()
         Text("DOCX, XLSX and PPTX editing require an office-engine integration and are not yet built in.", style = MaterialTheme.typography.bodySmall)
     }
+}
+
+private fun suggestedCsvName(currentName: String): String {
+    val base = currentName.substringBeforeLast('.', currentName).ifBlank { "data" }
+    return "${base}_export.csv"
 }
 
 private fun suggestedPdfName(currentName: String): String {
