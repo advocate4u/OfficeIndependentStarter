@@ -761,6 +761,22 @@ private fun OfficeHome() {
                 val filteredCsvRows = parseCsv(editorText).mapIndexed { index, row -> index to row }
                     .filter { (index, row) -> csvFilter.isBlank() || index == 0 || row.any { it.contains(csvFilter, ignoreCase = true) } }
                 Text("Showing ${filteredCsvRows.size} of ${allCsvRows.size} rows; up to 100 displayed", style = MaterialTheme.typography.bodySmall)
+                val summaryColumn = ((csvSortColumnText.toIntOrNull() ?: 1) - 1).coerceAtLeast(0)
+                val summaryValues = filteredCsvRows.drop(1).mapNotNull { (_, row) ->
+                    row.getOrNull(summaryColumn)?.trim()?.replace(",", "")?.toDoubleOrNull()
+                }
+                if (summaryValues.isNotEmpty()) {
+                    val summarySum = summaryValues.sum()
+                    val summaryAverage = summarySum / summaryValues.size
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text("Numeric summary · column ${summaryColumn + 1}", fontWeight = FontWeight.SemiBold)
+                            Text("Count: ${summaryValues.size}   Sum: ${String.format(java.util.Locale.US, "%.2f", summarySum)}")
+                            Text("Average: ${String.format(java.util.Locale.US, "%.2f", summaryAverage)}")
+                            Text("Based on filtered data rows (header excluded).", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
                 if (csvFilter.isNotBlank()) {
                     OutlinedButton(onClick = { csvFilter = "" }, modifier = Modifier.fillMaxWidth()) {
                         Text("Clear filter")
