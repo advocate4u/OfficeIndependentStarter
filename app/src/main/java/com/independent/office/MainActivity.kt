@@ -31,6 +31,8 @@ import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -60,7 +62,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private data class RecentDocument(val uri: String, val name: String, val isPdf: Boolean)
+private data class RecentDocument(val uri: String, val name: String, val isPdf: Boolean, val favorite: Boolean = false)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -89,9 +91,11 @@ private fun OfficeHome() {
     var replacementText by remember { mutableStateOf("") }
     var recentFiles by remember { mutableStateOf(loadRecentDocuments(context)) }
     var homeSearch by remember { mutableStateOf("") }
+    var recentFilter by remember { mutableStateOf("All") }
 
     fun rememberRecent(uri: Uri, name: String, pdf: Boolean) {
-        val updated = (listOf(RecentDocument(uri.toString(), name, pdf)) + recentFiles.filterNot { it.uri == uri.toString() }).take(8)
+        val oldFavorite = recentFiles.firstOrNull { it.uri == uri.toString() }?.favorite ?: false
+        val updated = (listOf(RecentDocument(uri.toString(), name, pdf, oldFavorite)) + recentFiles.filterNot { it.uri == uri.toString() }).take(20)
         recentFiles = updated
         saveRecentDocuments(context, updated)
     }
@@ -261,19 +265,61 @@ private fun OfficeHome() {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Recent files", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    recentFiles.filter { it.name.contains(homeSearch, ignoreCase = true) }.forEach { recent ->
-                        OutlinedButton(
-                            onClick = { openDocument(Uri.parse(recent.uri)) },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text((if (recent.isPdf) "PDF · " else "FILE · ") + recent.name, maxLines = 1)
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
+                        listOf("All", "PDF", "Text", "★ Saved").forEach { filter ->
+                            TextButton(onClick = { recentFilter = filter }) {
+                                Text(if (recentFilter == filter) "• $filter" else filter)
+                            }
                         }
                     }
-                    TextButton(onClick = {
-                        recentFiles = emptyList()
-                        saveRecentDocuments(context, emptyList())
-                        status = "Recent-file history cleared."
-                    }) { Text("Clear history") }
+                    val visibleRecent = recentFiles.filter { recent ->
+                        recent.name.contains(homeSearch, ignoreCase = true) &&
+                            when (recentFilter) {
+                                "PDF" -> recent.isPdf
+                                "Text" -> !recent.isPdf
+                                "★ Saved" -> recent.favorite
+                                else -> true
+                            }
+                    }
+                    if (visibleRecent.isEmpty()) {
+                        Text("No documents match this filter.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    visibleRecent.forEach { recent ->
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                            OutlinedButton(
+                                onClick = { openDocument(Uri.parse(recent.uri)) },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text((if (recent.isPdf) "PDF · " else "FILE · ") + recent.name, maxLines = 1)
+                            }
+                            TextButton(onClick = {
+                                val updated = recentFiles.map { item ->
+                                    if (item.uri == recent.uri) item.copy(favorite = !item.favorite) else item
+                                }
+                                recentFiles = updated
+                                saveRecentDocuments(context, updated)
+                            }) {
+                                androidx.compose.material3.Icon(
+                                    if (recent.favorite) Icons.Default.Star else Icons.Default.StarBorder,
+                                    contentDescription = if (recent.favorite) "Remove from saved" else "Save favorite",
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                        TextButton(onClick = {
+                            recentFiles = emptyList()
+                            saveRecentDocuments(context, emptyList())
+                            status = "Recent-file history cleared."
+                        }) { Text("Clear history") }
+                        TextButton(onClick = {
+                            val updated = recentFiles.filter { it.favorite }
+                            recentFiles = updated
+                            saveRecentDocuments(context, updated)
+                            status = "Removed unsaved items from recent history."
+                        }) { Text("Keep saved only") }
+                    }
                 }
             }
         }
@@ -500,15 +546,15 @@ private fun loadRecentDocuments(context: android.content.Context): List<RecentDo
         (0 until array.length()).mapNotNull { index ->
             val item = array.optJSONObject(index) ?: return@mapNotNull null
             val uri = item.optString("uri").takeIf { it.isNotBlank() } ?: return@mapNotNull null
-            RecentDocument(uri, item.optString("name", "Document"), item.optBoolean("isPdf"))
-        }.take(8)
+            RecentDocument(uri, item.optString("name", "Document"), item.optBoolean("isPdf"), item.optBoolean("favorite", false))
+        }.take(20)
     }.getOrDefault(emptyList())
 }
 
 private fun saveRecentDocuments(context: android.content.Context, documents: List<RecentDocument>) {
     val array = JSONArray()
     documents.forEach { document ->
-        array.put(JSONObject().put("uri", document.uri).put("name", document.name).put("isPdf", document.isPdf))
+        array.put(JSONObject().put("uri", document.uri).put("name", document.name).put("isPdf", document.isPdf).put("favorite", document.favorite))
     }
     context.getSharedPreferences("office_independent", android.content.Context.MODE_PRIVATE)
         .edit().putString("recent_documents", array.toString()).apply()
