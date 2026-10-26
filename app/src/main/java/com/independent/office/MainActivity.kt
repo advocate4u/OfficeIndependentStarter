@@ -507,6 +507,14 @@ private fun OfficeHome() {
                                     contentDescription = if (recent.uri in favoriteUris) "Remove favorite" else "Add favorite"
                                 )
                             }
+                            TextButton(onClick = {
+                                val kept = recentFiles.filterNot { it.uri == recent.uri }
+                                recentFiles = kept
+                                saveRecentDocuments(context, kept)
+                                favoriteUris = favoriteUris - recent.uri
+                                saveFavoriteUris(context, favoriteUris)
+                                status = "Removed from history and favorites. The original file was not deleted."
+                            }) { Text("Remove") }
                         }
                     }
                     TextButton(onClick = {
