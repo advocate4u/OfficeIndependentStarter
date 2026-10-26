@@ -414,6 +414,10 @@ private fun OfficeHome() {
                     selectedUri?.let { renderPdf(it, pdfPage, zoom) }
                 }, modifier = Modifier.weight(1f)) { Text("− Zoom") }
                 OutlinedButton(onClick = {
+                    zoom = 100
+                    selectedUri?.let { renderPdf(it, pdfPage, zoom) }
+                }, modifier = Modifier.weight(1f)) { Text("100%") }
+                OutlinedButton(onClick = {
                     zoom = (zoom + 25).coerceAtMost(250)
                     selectedUri?.let { renderPdf(it, pdfPage, zoom) }
                 }, modifier = Modifier.weight(1f)) { Text("+ Zoom") }
