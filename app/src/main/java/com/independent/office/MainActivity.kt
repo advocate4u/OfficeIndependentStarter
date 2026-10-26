@@ -1016,7 +1016,7 @@ private fun extractOfficePreview(bytes: ByteArray, extension: String): String {
             val name = entry.name
             val wanted = (extension == "docx" && name == "word/document.xml") ||
                 (extension == "pptx" && Regex("ppt/slides/slide\\d+\\.xml").matches(name)) ||
-                (extension == "xlsx" && name in setOf("xl/sharedStrings.xml", "xl/worksheets/sheet1.xml"))
+                (extension == "xlsx" && (name == "xl/sharedStrings.xml" || Regex("xl/worksheets/sheet\\d+\\.xml").matches(name)))
             if (!entry.isDirectory && wanted) entries[name] = zip.readBytes()
             zip.closeEntry()
             entry = zip.nextEntry
@@ -1060,44 +1060,51 @@ private fun extractOfficePreview(bytes: ByteArray, extension: String): String {
                     event = stringsParser.next()
                 }
             }
-            val sheetBytes = entries["xl/worksheets/sheet1.xml"] ?: error("First worksheet XML was not found")
-            val parser = Xml.newPullParser()
-            parser.setInput(StringReader(String(sheetBytes, Charsets.UTF_8)))
-            val rows = sortedMapOf<Int, MutableMap<Int, String>>()
-            var rowNumber = 1
-            var cellRef = ""
-            var cellType = ""
-            var cellValue = StringBuilder()
-            var inCell = false
-            var event = parser.eventType
-            while (event != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
-                if (event == org.xmlpull.v1.XmlPullParser.START_TAG && parser.name == "row") {
-                    rowNumber = parser.getAttributeValue(null, "r")?.toIntOrNull() ?: rowNumber
-                } else if (event == org.xmlpull.v1.XmlPullParser.START_TAG && parser.name == "c") {
-                    inCell = true
-                    cellRef = parser.getAttributeValue(null, "r").orEmpty()
-                    cellType = parser.getAttributeValue(null, "t").orEmpty()
-                    cellValue = StringBuilder()
-                } else if (event == org.xmlpull.v1.XmlPullParser.START_TAG && inCell && (parser.name == "v" || parser.name == "t")) {
-                    cellValue.append(parser.nextText())
-                } else if (event == org.xmlpull.v1.XmlPullParser.END_TAG && parser.name == "c" && inCell) {
-                    val letters = cellRef.takeWhile { it.isLetter() }.uppercase()
-                    var columnIndex = 0
-                    letters.forEach { letter -> columnIndex = columnIndex * 26 + (letter - 'A' + 1) }
-                    columnIndex -= 1
-                    if (columnIndex >= 0) {
-                        val raw = cellValue.toString()
-                        val value = if (cellType == "s") sharedStrings.getOrNull(raw.toIntOrNull() ?: -1).orEmpty() else raw
-                        rows.getOrPut(rowNumber) { mutableMapOf() }[columnIndex] = value
+            fun renderSheet(sheetBytes: ByteArray): String {
+                val parser = Xml.newPullParser()
+                parser.setInput(StringReader(String(sheetBytes, Charsets.UTF_8)))
+                val rows = sortedMapOf<Int, MutableMap<Int, String>>()
+                var rowNumber = 1
+                var cellRef = ""
+                var cellType = ""
+                var cellValue = StringBuilder()
+                var inCell = false
+                var event = parser.eventType
+                while (event != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+                    if (event == org.xmlpull.v1.XmlPullParser.START_TAG && parser.name == "row") {
+                        rowNumber = parser.getAttributeValue(null, "r")?.toIntOrNull() ?: rowNumber
+                    } else if (event == org.xmlpull.v1.XmlPullParser.START_TAG && parser.name == "c") {
+                        inCell = true
+                        cellRef = parser.getAttributeValue(null, "r").orEmpty()
+                        cellType = parser.getAttributeValue(null, "t").orEmpty()
+                        cellValue = StringBuilder()
+                    } else if (event == org.xmlpull.v1.XmlPullParser.START_TAG && inCell && (parser.name == "v" || parser.name == "t")) {
+                        cellValue.append(parser.nextText())
+                    } else if (event == org.xmlpull.v1.XmlPullParser.END_TAG && parser.name == "c" && inCell) {
+                        val letters = cellRef.takeWhile { it.isLetter() }.uppercase()
+                        var columnIndex = 0
+                        letters.forEach { letter -> columnIndex = columnIndex * 26 + (letter - 'A' + 1) }
+                        columnIndex -= 1
+                        if (columnIndex >= 0) {
+                            val raw = cellValue.toString()
+                            val value = if (cellType == "s") sharedStrings.getOrNull(raw.toIntOrNull() ?: -1).orEmpty() else raw
+                            rows.getOrPut(rowNumber) { mutableMapOf() }[columnIndex] = value
+                        }
+                        inCell = false
                     }
-                    inCell = false
+                    event = parser.next()
                 }
-                event = parser.next()
+                val maxColumn = rows.values.flatMap { it.keys }.maxOrNull() ?: -1
+                return rows.entries.joinToString("\n") { (_, row) ->
+                    serializeCsv(listOf((0..maxColumn).map { row[it].orEmpty() }))
+                }
             }
-            val maxColumn = rows.values.flatMap { it.keys }.maxOrNull() ?: -1
-            rows.entries.joinToString("\n") { (_, row) ->
-                serializeCsv(listOf((0..maxColumn).map { row[it].orEmpty() }))
-            }.ifBlank { error("No readable worksheet cells were found") }
+            val sheets = entries.filterKeys { Regex("xl/worksheets/sheet\\d+\\.xml").matches(it) }
+                .toSortedMap(compareBy { Regex("sheet(\\d+)").find(it)?.groupValues?.get(1)?.toIntOrNull() ?: Int.MAX_VALUE })
+            if (sheets.isEmpty()) error("No worksheet XML was found")
+            sheets.entries.mapIndexed { index, entry ->
+                "Sheet ${index + 1}\n${renderSheet(entry.value)}"
+            }.joinToString("\n\n").ifBlank { error("No readable worksheet cells were found") }
         }
         else -> error("Unsupported Office preview type")
     }
