@@ -109,6 +109,7 @@ private fun OfficeHome() {
     var csvTableMode by remember { mutableStateOf(false) }
     var csvFilter by remember { mutableStateOf("") }
     var csvSortColumnText by remember { mutableStateOf("1") }
+    var csvNumericSort by remember { mutableStateOf(false) }
     var recentFilter by remember { mutableStateOf("All") }
     var undoStack by remember { mutableStateOf(emptyList<String>()) }
     var redoStack by remember { mutableStateOf(emptyList<String>()) }
@@ -224,6 +225,7 @@ private fun OfficeHome() {
         csvTableMode = !isPdf && fileName.endsWith(".csv", true)
         csvFilter = ""
         csvSortColumnText = "1"
+        csvNumericSort = false
         rememberRecent(uri, fileName, isPdf)
         if (isPdf) {
             pdfBookmarks = loadPdfBookmarks(context, uri.toString())
@@ -635,23 +637,27 @@ private fun OfficeHome() {
                     singleLine = true,
                     label = { Text("Sort by column number (1 = first column)") }
                 )
+                OutlinedButton(
+                    onClick = { csvNumericSort = !csvNumericSort },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(if (csvNumericSort) "Sort mode: Numeric (tap to switch to text)" else "Sort mode: Text (tap to switch to numeric)") }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     OutlinedButton(onClick = {
                         val rows = parseCsv(editorText)
                         val columnIndex = (csvSortColumnText.toIntOrNull() ?: 1) - 1
                         if (rows.size > 2 && columnIndex >= 0 && columnIndex < (rows.maxOfOrNull { it.size } ?: 0)) {
-                            val sorted = listOf(rows.first()) + rows.drop(1).sortedBy { it.getOrNull(columnIndex).orEmpty().lowercase() }
+                            val sorted = listOf(rows.first()) + rows.drop(1).sortedWith { a, b -> compareCsvValues(a.getOrNull(columnIndex).orEmpty(), b.getOrNull(columnIndex).orEmpty(), csvNumericSort) }
                             updateEditorText(serializeCsv(sorted))
-                            status = "Sorted data rows A–Z by column ${columnIndex + 1}; first row kept as header."
+                            status = "Sorted data rows ascending by column ${columnIndex + 1}; first row kept as header."
                         } else status = "Enter a valid column number and ensure at least two data rows exist."
                     }, modifier = Modifier.weight(1f)) { Text("Sort A–Z") }
                     OutlinedButton(onClick = {
                         val rows = parseCsv(editorText)
                         val columnIndex = (csvSortColumnText.toIntOrNull() ?: 1) - 1
                         if (rows.size > 2 && columnIndex >= 0 && columnIndex < (rows.maxOfOrNull { it.size } ?: 0)) {
-                            val sorted = listOf(rows.first()) + rows.drop(1).sortedByDescending { it.getOrNull(columnIndex).orEmpty().lowercase() }
+                            val sorted = listOf(rows.first()) + rows.drop(1).sortedWith { a, b -> compareCsvValues(b.getOrNull(columnIndex).orEmpty(), a.getOrNull(columnIndex).orEmpty(), csvNumericSort) }
                             updateEditorText(serializeCsv(sorted))
-                            status = "Sorted data rows Z–A by column ${columnIndex + 1}; first row kept as header."
+                            status = "Sorted data rows descending by column ${columnIndex + 1}; first row kept as header."
                         } else status = "Enter a valid column number and ensure at least two data rows exist."
                     }, modifier = Modifier.weight(1f)) { Text("Sort Z–A") }
                 }
@@ -979,6 +985,15 @@ private fun writeTextPdf(text: String, title: String, output: java.io.OutputStre
     document.finishPage(page)
     document.writeTo(output)
     document.close()
+}
+
+private fun compareCsvValues(first: String, second: String, numeric: Boolean): Int {
+    if (numeric) {
+        val a = first.trim().toDoubleOrNull()
+        val b = second.trim().toDoubleOrNull()
+        if (a != null && b != null) return a.compareTo(b)
+    }
+    return first.compareTo(second, ignoreCase = true)
 }
 
 private fun parseCsv(content: String): List<List<String>> {
