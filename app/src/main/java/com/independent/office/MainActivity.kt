@@ -715,6 +715,18 @@ private fun OfficeHome() {
                             modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
+                            if (rowIndex > 0) {
+                                OutlinedButton(
+                                    onClick = {
+                                        val rows = parseCsv(editorText).map { it.toMutableList() }.toMutableList()
+                                        if (rowIndex in rows.indices) {
+                                            rows.add((rowIndex + 1).coerceAtMost(rows.size), rows[rowIndex].toMutableList())
+                                            updateEditorText(serializeCsv(rows))
+                                            status = "Duplicated row ${rowIndex + 1}."
+                                        }
+                                    }
+                                ) { Text("Duplicate row") }
+                            }
                             row.take(20).forEachIndexed { columnIndex, cell ->
                                 OutlinedTextField(
                                     value = cell,
