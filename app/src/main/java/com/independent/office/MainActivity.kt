@@ -103,6 +103,7 @@ private fun OfficeHome() {
     var favoriteUris by remember { mutableStateOf(loadFavoriteUris(context)) }
     var homeSearch by remember { mutableStateOf("") }
     var editorFontSize by remember { mutableIntStateOf(context.getSharedPreferences("office_independent", android.content.Context.MODE_PRIVATE).getInt("editor_font_size", 16).coerceIn(10, 32)) }
+    var csvTableMode by remember { mutableStateOf(false) }
     var recentFilter by remember { mutableStateOf("All") }
     var undoStack by remember { mutableStateOf(emptyList<String>()) }
     var redoStack by remember { mutableStateOf(emptyList<String>()) }
@@ -214,6 +215,7 @@ private fun OfficeHome() {
         selectedUri = uri
         fileName = queryDisplayName(uri, context.contentResolver)
         isPdf = context.contentResolver.getType(uri) == "application/pdf" || fileName.endsWith(".pdf", true)
+        csvTableMode = !isPdf && fileName.endsWith(".csv", true)
         rememberRecent(uri, fileName, isPdf)
         if (isPdf) {
             pdfBookmarks = loadPdfBookmarks(context, uri.toString())
@@ -526,7 +528,41 @@ private fun OfficeHome() {
             if (editorText != lastSavedText) {
                 Text("Unsaved changes · local draft protected", color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodySmall)
             }
-            OutlinedTextField(
+            if (fileName.endsWith(".csv", true)) {
+                OutlinedButton(onClick = { csvTableMode = !csvTableMode }, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (csvTableMode) "Switch to raw CSV text" else "Switch to table view")
+                }
+            }
+            if (csvTableMode && fileName.endsWith(".csv", true)) {
+                Text("CSV table · edit cells directly (first 100 rows and 20 columns shown)", style = MaterialTheme.typography.bodySmall)
+                val csvRows = parseCsv(editorText).take(100)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    csvRows.forEachIndexed { rowIndex, row ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            row.take(20).forEachIndexed { columnIndex, cell ->
+                                OutlinedTextField(
+                                    value = cell,
+                                    onValueChange = { newValue ->
+                                        val mutableRows = parseCsv(editorText).map { it.toMutableList() }.toMutableList()
+                                        while (mutableRows.size <= rowIndex) mutableRows.add(mutableListOf(""))
+                                        while (mutableRows[rowIndex].size <= columnIndex) mutableRows[rowIndex].add("")
+                                        mutableRows[rowIndex][columnIndex] = newValue
+                                        updateEditorText(serializeCsv(mutableRows))
+                                    },
+                                    modifier = Modifier.width(150.dp),
+                                    singleLine = true,
+                                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = editorFontSize.sp),
+                                    placeholder = { Text("R${rowIndex + 1}C${columnIndex + 1}") }
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                            OutlinedTextField(
                 value = editorText,
                 onValueChange = { updateEditorText(it) },
                 modifier = Modifier.fillMaxWidth().height(320.dp),
@@ -534,6 +570,7 @@ private fun OfficeHome() {
                 placeholder = { Text("Open a text file or start typing…") },
                 textStyle = androidx.compose.ui.text.TextStyle(fontSize = editorFontSize.sp)
             )
+            }
             val wordCount = editorText.trim().split(Regex("\\s+")).count { it.isNotEmpty() }
             val lineCount = if (editorText.isEmpty()) 0 else editorText.count { it == '\n' } + 1
             Text("$wordCount words · ${editorText.length} characters · $lineCount lines", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -668,6 +705,52 @@ private fun OfficeHome() {
         Text("DOCX, XLSX and PPTX editing require an office-engine integration and are not yet built in.", style = MaterialTheme.typography.bodySmall)
     }
 }
+
+private fun parseCsv(content: String): List<List<String>> {
+    if (content.isEmpty()) return listOf(listOf(""))
+    val rows = mutableListOf<MutableList<String>>()
+    var row = mutableListOf<String>()
+    val cell = StringBuilder()
+    var quoted = false
+    var index = 0
+    while (index < content.length) {
+        val ch = content[index]
+        when {
+            ch == '"' && quoted && index + 1 < content.length && content[index + 1] == '"' -> {
+                cell.append('"')
+                index++
+            }
+            ch == '"' -> quoted = !quoted
+            ch == ',' && !quoted -> {
+                row.add(cell.toString())
+                cell.setLength(0)
+            }
+            (ch == '\n' || ch == '\r') && !quoted -> {
+                if (ch == '\r' && index + 1 < content.length && content[index + 1] == '\n') index++
+                row.add(cell.toString())
+                cell.setLength(0)
+                rows.add(row)
+                row = mutableListOf()
+            }
+            else -> cell.append(ch)
+        }
+        index++
+    }
+    if (cell.isNotEmpty() || row.isNotEmpty()) {
+        row.add(cell.toString())
+        rows.add(row)
+    }
+    return rows.ifEmpty { listOf(listOf("")) }
+}
+
+private fun serializeCsv(rows: List<List<String>>): String =
+    rows.joinToString("\n") { row ->
+        row.joinToString(",") { value ->
+            if (value.any { it == ',' || it == '"' || it == '\n' || it == '\r' }) {
+                "\"" + value.replace("\"", "\"\"") + "\""
+            } else value
+        }
+    }
 
 private fun queryDisplayName(uri: Uri, resolver: android.content.ContentResolver): String {
     return try {
