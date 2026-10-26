@@ -32,7 +32,6 @@ import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Share
@@ -313,7 +312,15 @@ private fun OfficeHome() {
             }
         }
 
-        val visibleRecent = recentFiles.filter { it.name.contains(homeSearch, ignoreCase = true) }
+        val visibleRecent = recentFiles.filter { recent ->
+            recent.name.contains(homeSearch, ignoreCase = true) &&
+                when (recentFilter) {
+                    "PDF" -> recent.isPdf
+                    "Text" -> !recent.isPdf
+                    "★ Saved" -> recent.uri in favoriteUris
+                    else -> true
+                }
+        }
         val visibleFavorites = recentFiles.filter { it.uri in favoriteUris && it.name.contains(homeSearch, ignoreCase = true) }
         if (visibleFavorites.isNotEmpty()) {
             Card(Modifier.fillMaxWidth()) {
@@ -336,6 +343,13 @@ private fun OfficeHome() {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Recent files", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.fillMaxWidth()) {
+                        listOf("All", "PDF", "Text", "★ Saved").forEach { filter ->
+                            TextButton(onClick = { recentFilter = filter }) {
+                                Text(if (recentFilter == filter) "• $filter" else filter)
+                            }
+                        }
+                    }
                     if (visibleRecent.isEmpty()) Text("No matching recent files.", style = MaterialTheme.typography.bodySmall)
                     visibleRecent.forEach { recent ->
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -351,10 +365,11 @@ private fun OfficeHome() {
                         }
                     }
                     TextButton(onClick = {
-                        recentFiles = emptyList()
-                        saveRecentDocuments(context, emptyList())
-                        status = "Recent-file history cleared."
-                    }) { Text("Clear history") }
+                        val kept = recentFiles.filter { it.uri in favoriteUris }
+                        recentFiles = kept
+                        saveRecentDocuments(context, kept)
+                        status = "Recent history cleared; saved favorites were kept."
+                    }) { Text("Clear history (keep favorites)") }
                 }
             }
         }
