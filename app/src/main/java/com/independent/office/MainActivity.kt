@@ -596,6 +596,26 @@ private fun OfficeHome() {
                         updateEditorText(serializeCsv(rows))
                     }, modifier = Modifier.weight(1f)) { Text("− Remove last column") }
                 }
+                val allCsvRows = parseCsv(editorText)
+                Text("${allCsvRows.size} rows · ${allCsvRows.maxOfOrNull { it.size } ?: 0} columns", style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = {
+                        val rows = parseCsv(editorText)
+                        if (rows.size > 2) {
+                            val sorted = listOf(rows.first()) + rows.drop(1).sortedBy { it.firstOrNull().orEmpty().lowercase() }
+                            updateEditorText(serializeCsv(sorted))
+                            status = "Sorted data rows A–Z by the first column; first row kept as header."
+                        } else status = "Add at least two data rows before sorting."
+                    }, modifier = Modifier.weight(1f)) { Text("Sort A–Z") }
+                    OutlinedButton(onClick = {
+                        val rows = parseCsv(editorText)
+                        if (rows.size > 2) {
+                            val sorted = listOf(rows.first()) + rows.drop(1).sortedByDescending { it.firstOrNull().orEmpty().lowercase() }
+                            updateEditorText(serializeCsv(sorted))
+                            status = "Sorted data rows Z–A by the first column; first row kept as header."
+                        } else status = "Add at least two data rows before sorting."
+                    }, modifier = Modifier.weight(1f)) { Text("Sort Z–A") }
+                }
                 val csvRows = parseCsv(editorText).take(100)
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     csvRows.forEachIndexed { rowIndex, row ->
