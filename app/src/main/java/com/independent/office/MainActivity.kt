@@ -859,14 +859,15 @@ private fun OfficeHome() {
                             }
                         }
                     },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    enabled = !officePreviewOnly && !isPdf && !unsupportedOfficeFile && selectedUri != null
                 ) {
                     androidx.compose.material3.Icon(Icons.Default.Save, contentDescription = null)
                     Spacer(Modifier.size(6.dp))
                     Text("Save")
                 }
                 OutlinedButton(onClick = { createLauncher.launch(suggestedTextCopyName(fileName)) }, modifier = Modifier.weight(1f)) {
-                    Text("Save copy")
+                    Text(if (officePreviewOnly) "Export preview as text" else "Save copy")
                 }
             }
             OutlinedButton(
