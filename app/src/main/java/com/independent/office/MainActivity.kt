@@ -199,7 +199,11 @@ private fun OfficeHome() {
             pdfPageCount = result.second
             pdfPage = result.third
             context.getSharedPreferences("office_independent", android.content.Context.MODE_PRIVATE)
-                .edit().putInt("last_pdf_page:" + uri.toString(), result.third).apply()
+                .edit()
+                .putInt("last_pdf_page:" + uri.toString(), result.third)
+                .putInt("pdf_zoom:" + uri.toString(), zoom)
+                .putInt("pdf_rotation:" + uri.toString(), pdfRotation)
+                .apply()
             status = "PDF page ${result.third + 1} of ${result.second}"
         }
     }
@@ -215,10 +219,10 @@ private fun OfficeHome() {
             pdfBookmarks = loadPdfBookmarks(context, uri.toString())
             editorText = ""
             lastSavedText = ""
-            pdfRotation = 0
-            zoom = 100
-            val lastPage = context.getSharedPreferences("office_independent", android.content.Context.MODE_PRIVATE)
-                .getInt("last_pdf_page:" + uri.toString(), 0)
+            val pdfPreferences = context.getSharedPreferences("office_independent", android.content.Context.MODE_PRIVATE)
+            pdfRotation = pdfPreferences.getInt("pdf_rotation:" + uri.toString(), 0).coerceIn(0, 270) / 90 * 90
+            zoom = pdfPreferences.getInt("pdf_zoom:" + uri.toString(), 100).coerceIn(50, 250)
+            val lastPage = pdfPreferences.getInt("last_pdf_page:" + uri.toString(), 0)
             pdfPage = lastPage
             renderPdf(uri, lastPage, zoom)
         } else {
