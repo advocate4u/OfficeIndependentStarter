@@ -289,7 +289,12 @@ private fun OfficeHome() {
                         } ?: error("Could not create PDF")
                     }
                 }
-                status = if (saved.isSuccess) "PDF export completed." else "PDF export failed: ${saved.exceptionOrNull()?.message}"
+                if (saved.isSuccess) {
+                    rememberRecent(uri, queryDisplayName(uri, context.contentResolver), true)
+                    status = "PDF export completed and added to Recent files."
+                } else {
+                    status = "PDF export failed: ${saved.exceptionOrNull()?.message}"
+                }
             }
         }
     }
