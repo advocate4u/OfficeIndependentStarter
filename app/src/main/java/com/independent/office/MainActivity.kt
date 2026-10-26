@@ -292,7 +292,13 @@ private fun OfficeHome() {
                     runCatching {
                         context.contentResolver.openOutputStream(uri)?.use { output ->
                             if (fileName.endsWith(".csv", true) && csvTableMode) {
-                                writeCsvPdf(parseCsv(editorText), fileName, output)
+                                val rows = parseCsv(editorText)
+                                val visibleRows = if (csvFilter.isBlank()) rows else {
+                                    rows.take(1) + rows.drop(1).filter { row ->
+                                        row.any { cell -> cell.contains(csvFilter, ignoreCase = true) }
+                                    }
+                                }
+                                writeCsvPdf(visibleRows, fileName, output)
                             } else {
                                 writeTextPdf(editorText, fileName, output)
                             }
@@ -301,7 +307,7 @@ private fun OfficeHome() {
                 }
                 if (saved.isSuccess) {
                     rememberRecent(uri, queryDisplayName(uri, context.contentResolver), true)
-                    status = "PDF export completed and added to Recent files."
+                    status = if (fileName.endsWith(".csv", true) && csvTableMode && csvFilter.isNotBlank()) "Filtered CSV rows exported to PDF and added to Recent files." else "PDF export completed and added to Recent files."
                 } else {
                     status = "PDF export failed: ${saved.exceptionOrNull()?.message}"
                 }
@@ -749,7 +755,7 @@ private fun OfficeHome() {
             ) {
                 androidx.compose.material3.Icon(Icons.Default.PictureAsPdf, contentDescription = null)
                 Spacer(Modifier.size(8.dp))
-                Text(if (fileName.endsWith(".csv", true) && csvTableMode) "Export CSV table to PDF" else "Export text to PDF")
+                Text(if (fileName.endsWith(".csv", true) && csvTableMode) "Export visible CSV rows to PDF" else "Export text to PDF")
             }
             OutlinedButton(
                 onClick = {
