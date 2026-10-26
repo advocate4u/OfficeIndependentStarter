@@ -3,6 +3,8 @@ package com.independent.office
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Matrix
+import android.graphics.Paint
+import android.graphics.pdf.PdfDocument
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Bundle
@@ -274,6 +276,21 @@ private fun OfficeHome() {
         if (uri != null) {
             runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             openDocument(uri)
+        }
+    }
+
+    val pdfExportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val saved = withContext(Dispatchers.IO) {
+                    runCatching {
+                        context.contentResolver.openOutputStream(uri)?.use { output ->
+                            writeTextPdf(editorText, output)
+                        } ?: error("Could not create PDF")
+                    }
+                }
+                status = if (saved.isSuccess) "PDF export completed." else "PDF export failed: ${saved.exceptionOrNull()?.message}"
+            }
         }
     }
 
@@ -689,6 +706,15 @@ private fun OfficeHome() {
                 }
             }
             OutlinedButton(
+                onClick = { pdfExportLauncher.launch(suggestedPdfName(fileName)) },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = editorText.isNotEmpty()
+            ) {
+                androidx.compose.material3.Icon(Icons.Default.PictureAsPdf, contentDescription = null)
+                Spacer(Modifier.size(8.dp))
+                Text("Export text to PDF")
+            }
+            OutlinedButton(
                 onClick = {
                     val intent = Intent(Intent.ACTION_SEND).apply {
                         type = "text/plain"
@@ -785,6 +811,52 @@ private fun OfficeHome() {
         Divider()
         Text("DOCX, XLSX and PPTX editing require an office-engine integration and are not yet built in.", style = MaterialTheme.typography.bodySmall)
     }
+}
+
+private fun suggestedPdfName(currentName: String): String {
+    val base = currentName.substringBeforeLast('.', currentName).ifBlank { "document" }
+    return "${base}.pdf"
+}
+
+private fun writeTextPdf(text: String, output: java.io.OutputStream) {
+    val document = PdfDocument()
+    val pageWidth = 595
+    val pageHeight = 842
+    val margin = 40f
+    val lineHeight = 18f
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.BLACK
+        textSize = 12f
+    }
+    var pageNumber = 1
+    var page = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
+    var canvas = page.canvas
+    var y = margin
+    fun nextPage() {
+        document.finishPage(page)
+        pageNumber++
+        page = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
+        canvas = page.canvas
+        y = margin
+    }
+    text.split('\n').forEach { paragraph ->
+        if (paragraph.isEmpty()) {
+            if (y + lineHeight > pageHeight - margin) nextPage()
+            y += lineHeight
+        } else {
+            var remaining = paragraph
+            while (remaining.isNotEmpty()) {
+                if (y + lineHeight > pageHeight - margin) nextPage()
+                val count = paint.breakText(remaining, true, pageWidth - 2 * margin, null).coerceAtLeast(1)
+                canvas.drawText(remaining.substring(0, count), margin, y, paint)
+                remaining = remaining.substring(count)
+                y += lineHeight
+            }
+        }
+    }
+    document.finishPage(page)
+    document.writeTo(output)
+    document.close()
 }
 
 private fun parseCsv(content: String): List<List<String>> {
