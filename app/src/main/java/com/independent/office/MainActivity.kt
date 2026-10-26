@@ -96,12 +96,38 @@ private fun OfficeHome() {
     var favoriteUris by remember { mutableStateOf(loadFavoriteUris(context)) }
     var homeSearch by remember { mutableStateOf("") }
     var recentFilter by remember { mutableStateOf("All") }
+    var undoStack by remember { mutableStateOf(emptyList<String>()) }
+    var redoStack by remember { mutableStateOf(emptyList<String>()) }
 
     fun rememberRecent(uri: Uri, name: String, pdf: Boolean) {
         val oldFavorite = recentFiles.firstOrNull { it.uri == uri.toString() }?.favorite ?: false
         val updated = (listOf(RecentDocument(uri.toString(), name, pdf, oldFavorite)) + recentFiles.filterNot { it.uri == uri.toString() }).take(20)
         recentFiles = updated
         saveRecentDocuments(context, updated)
+    }
+
+    fun updateEditorText(newText: String) {
+        if (newText == editorText) return
+        undoStack = (undoStack + editorText).takeLast(50)
+        redoStack = emptyList()
+        editorText = newText
+        selectedUri?.let { uri -> if (!isPdf) saveDraft(context, uri, newText) }
+    }
+
+    fun undoEditor() {
+        val previous = undoStack.lastOrNull() ?: return
+        redoStack = (redoStack + editorText).takeLast(50)
+        undoStack = undoStack.dropLast(1)
+        editorText = previous
+        selectedUri?.let { uri -> if (!isPdf) saveDraft(context, uri, previous) }
+    }
+
+    fun redoEditor() {
+        val next = redoStack.lastOrNull() ?: return
+        undoStack = (undoStack + editorText).takeLast(50)
+        redoStack = redoStack.dropLast(1)
+        editorText = next
+        selectedUri?.let { uri -> if (!isPdf) saveDraft(context, uri, next) }
     }
 
     
@@ -146,6 +172,8 @@ private fun OfficeHome() {
     }
 
     fun openDocument(uri: Uri) {
+        undoStack = emptyList()
+        redoStack = emptyList()
         selectedUri = uri
         fileName = queryDisplayName(uri, context.contentResolver)
         isPdf = context.contentResolver.getType(uri) == "application/pdf" || fileName.endsWith(".pdf", true)
@@ -172,6 +200,8 @@ private fun OfficeHome() {
                     }
                 }
                 if (loaded.isSuccess) {
+                    undoStack = emptyList()
+                    redoStack = emptyList()
                     val diskText = loaded.getOrDefault("")
                     val draft = loadDraft(context, uri)
                     if (draft != null && draft != diskText) {
@@ -238,7 +268,7 @@ private fun OfficeHome() {
                 Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     androidx.compose.material3.Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(28.dp))
                     Text("Text", fontWeight = FontWeight.SemiBold)
-                    TextButton(onClick = { editorText = ""; fileName = "Untitled.txt"; selectedUri = null; isPdf = false; status = "New text document. Use Save copy to save it." }) { Text("New") }
+                    TextButton(onClick = { editorText = ""; undoStack = emptyList(); redoStack = emptyList(); fileName = "Untitled.txt"; selectedUri = null; isPdf = false; status = "New text document. Use Save copy to save it." }) { Text("New") }
                 }
             }
             Card(Modifier.weight(1f)) {
@@ -379,12 +409,13 @@ private fun OfficeHome() {
                 Text("Text editor", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                 OutlinedButton(onClick = { showFindReplaceDialog = true }) { Text("Find / Replace") }
             }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(onClick = { undoEditor() }, enabled = undoStack.isNotEmpty(), modifier = Modifier.weight(1f)) { Text("Undo") }
+                OutlinedButton(onClick = { redoEditor() }, enabled = redoStack.isNotEmpty(), modifier = Modifier.weight(1f)) { Text("Redo") }
+            }
             OutlinedTextField(
                 value = editorText,
-                onValueChange = {
-                    editorText = it
-                    selectedUri?.let { uri -> if (!isPdf) saveDraft(context, uri, it) }
-                },
+                onValueChange = { updateEditorText(it) },
                 modifier = Modifier.fillMaxWidth().height(320.dp),
                 label = { Text("Text / Markdown / CSV") },
                 placeholder = { Text("Open a text file or start typing…") }
@@ -475,9 +506,9 @@ private fun OfficeHome() {
                     TextButton(onClick = {
                         if (findText.isNotEmpty()) {
                             val before = editorText
-                            editorText = Regex(Regex.escape(findText), RegexOption.IGNORE_CASE).replace(editorText) { replacementText }
-                            val changed = before != editorText
-                            if (changed) selectedUri?.let { uri -> if (!isPdf) saveDraft(context, uri, editorText) }
+                            val replaced = Regex(Regex.escape(findText), RegexOption.IGNORE_CASE).replace(editorText) { replacementText }
+                            val changed = before != replaced
+                            if (changed) updateEditorText(replaced)
                             status = if (changed) "Replaced matching text. Local draft updated; save to keep changes in the file." else "No matching text found."
                         }
                         showFindReplaceDialog = false
