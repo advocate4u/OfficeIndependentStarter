@@ -110,6 +110,7 @@ private fun OfficeHome() {
     var csvFilter by remember { mutableStateOf("") }
     var csvSortColumnText by remember { mutableStateOf("1") }
     var csvNumericSort by remember { mutableStateOf(false) }
+    var csvDeleteRowIndex by remember { mutableIntStateOf(-1) }
     var recentFilter by remember { mutableStateOf("All") }
     var undoStack by remember { mutableStateOf(emptyList<String>()) }
     var redoStack by remember { mutableStateOf(emptyList<String>()) }
@@ -726,6 +727,9 @@ private fun OfficeHome() {
                                         }
                                     }
                                 ) { Text("Duplicate row") }
+                                OutlinedButton(onClick = { csvDeleteRowIndex = rowIndex }) {
+                                    Text("Delete row")
+                                }
                             }
                             row.take(20).forEachIndexed { columnIndex, cell ->
                                 OutlinedTextField(
@@ -873,6 +877,27 @@ private fun OfficeHome() {
                 },
                 dismissButton = {
                     TextButton(onClick = { showFindReplaceDialog = false }) { Text("Close") }
+                }
+            )
+        }
+        if (csvDeleteRowIndex > 0) {
+            AlertDialog(
+                onDismissRequest = { csvDeleteRowIndex = -1 },
+                title = { Text("Delete CSV row?") },
+                text = { Text("Delete row ${csvDeleteRowIndex + 1}? This cannot be undone after you save the file.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val rows = parseCsv(editorText).map { it.toMutableList() }.toMutableList()
+                        if (csvDeleteRowIndex in 1 until rows.size) {
+                            rows.removeAt(csvDeleteRowIndex)
+                            updateEditorText(serializeCsv(rows))
+                            status = "Deleted row ${csvDeleteRowIndex + 1}."
+                        }
+                        csvDeleteRowIndex = -1
+                    }) { Text("Delete") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { csvDeleteRowIndex = -1 }) { Text("Cancel") }
                 }
             )
         }
