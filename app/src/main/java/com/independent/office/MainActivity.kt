@@ -214,6 +214,7 @@ private fun OfficeHome() {
         if (isPdf) {
             pdfBookmarks = loadPdfBookmarks(context, uri.toString())
             editorText = ""
+            lastSavedText = ""
             pdfRotation = 0
             zoom = 100
             val lastPage = context.getSharedPreferences("office_independent", android.content.Context.MODE_PRIVATE)
@@ -226,6 +227,7 @@ private fun OfficeHome() {
             val textLike = extension in setOf("txt", "md", "csv", "json", "xml", "html", "htm", "log", "yaml", "yml") || mime.startsWith("text/") || mime == "application/json" || mime == "application/xml"
             if (!textLike) {
                 editorText = ""
+                lastSavedText = ""
                 status = "This format needs a compatible office app. Use Open in compatible app below."
                 return
             }
