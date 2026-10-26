@@ -201,7 +201,7 @@ private fun OfficeHome() {
             context.getSharedPreferences("office_independent", android.content.Context.MODE_PRIVATE)
                 .edit()
                 .putInt("last_pdf_page:" + uri.toString(), result.third)
-                .putInt("pdf_zoom:" + uri.toString(), zoom)
+                .putInt("pdf_zoom:" + uri.toString(), scalePercent)
                 .putInt("pdf_rotation:" + uri.toString(), pdfRotation)
                 .apply()
             status = "PDF page ${result.third + 1} of ${result.second}"
