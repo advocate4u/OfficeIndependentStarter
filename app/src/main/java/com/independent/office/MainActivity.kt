@@ -1032,7 +1032,7 @@ private fun extractOfficePreview(bytes: ByteArray, extension: String): String {
             } else if (event == org.xmlpull.v1.XmlPullParser.END_TAG && (parser.name == "p" || parser.name == "sp")) {
                 result.append('\n')
             }
-            event = parser.eventType
+            event = parser.next()
         }
         return result.toString().replace(Regex("[ \\t]+\\n"), "\n").trim()
     }
