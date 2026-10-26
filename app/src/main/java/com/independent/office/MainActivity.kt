@@ -285,7 +285,7 @@ private fun OfficeHome() {
                 val saved = withContext(Dispatchers.IO) {
                     runCatching {
                         context.contentResolver.openOutputStream(uri)?.use { output ->
-                            writeTextPdf(editorText, output)
+                            writeTextPdf(editorText, fileName, output)
                         } ?: error("Could not create PDF")
                     }
                 }
@@ -818,7 +818,7 @@ private fun suggestedPdfName(currentName: String): String {
     return "${base}.pdf"
 }
 
-private fun writeTextPdf(text: String, output: java.io.OutputStream) {
+private fun writeTextPdf(text: String, title: String, output: java.io.OutputStream) {
     val document = PdfDocument()
     val pageWidth = 595
     val pageHeight = 842
@@ -828,16 +828,31 @@ private fun writeTextPdf(text: String, output: java.io.OutputStream) {
         color = android.graphics.Color.BLACK
         textSize = 12f
     }
+    val headerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.DKGRAY
+        textSize = 10f
+        typeface = android.graphics.Typeface.DEFAULT_BOLD
+    }
+    val footerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.DKGRAY
+        textSize = 9f
+    }
     var pageNumber = 1
     var page = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
     var canvas = page.canvas
-    var y = margin
+    canvas.drawText(title.take(70), margin, 25f, headerPaint)
+    var y = margin + 12f
+    fun drawFooter() {
+        canvas.drawText("Page $pageNumber", pageWidth - 80f, pageHeight - 18f, footerPaint)
+    }
     fun nextPage() {
+        drawFooter()
         document.finishPage(page)
         pageNumber++
         page = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
         canvas = page.canvas
-        y = margin
+        canvas.drawText(title.take(70), margin, 25f, headerPaint)
+        y = margin + 12f
     }
     text.split('\n').forEach { paragraph ->
         if (paragraph.isEmpty()) {
@@ -854,6 +869,7 @@ private fun writeTextPdf(text: String, output: java.io.OutputStream) {
             }
         }
     }
+    drawFooter()
     document.finishPage(page)
     document.writeTo(output)
     document.close()
