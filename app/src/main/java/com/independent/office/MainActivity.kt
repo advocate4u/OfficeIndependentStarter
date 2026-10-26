@@ -154,8 +154,15 @@ private fun OfficeHome() {
                     }
                 }
                 if (loaded.isSuccess) {
-                    editorText = loaded.getOrDefault("")
-                    status = "Text file opened. Save to keep your changes."
+                    val diskText = loaded.getOrDefault("")
+                    val draft = loadDraft(context, uri)
+                    if (draft != null && draft != diskText) {
+                        editorText = draft
+                        status = "Recovered unsaved local draft. Save to write changes to the file."
+                    } else {
+                        editorText = diskText
+                        status = "Text file opened. Changes are backed up locally; use Save to update the file."
+                    }
                 } else {
                     editorText = ""
                     status = "Could not read this text file."
@@ -290,7 +297,10 @@ private fun OfficeHome() {
             }
             OutlinedTextField(
                 value = editorText,
-                onValueChange = { editorText = it },
+                onValueChange = {
+                    editorText = it
+                    selectedUri?.let { uri -> if (!isPdf) saveDraft(context, uri, it) }
+                },
                 modifier = Modifier.fillMaxWidth().height(320.dp),
                 label = { Text("Text / Markdown / CSV") },
                 placeholder = { Text("Open a text file or start typing…") }
@@ -310,7 +320,8 @@ private fun OfficeHome() {
                                         } ?: error("Could not write file")
                                     }
                                 }
-                                status = if (saved.isSuccess) "Saved successfully." else "Save failed: ${saved.exceptionOrNull()?.message}"
+                                if (saved.isSuccess) clearDraft(context, uri)
+                                status = if (saved.isSuccess) "Saved successfully. Local draft cleared." else "Save failed: ${saved.exceptionOrNull()?.message}"
                             }
                         }
                     },
@@ -440,4 +451,21 @@ private fun saveRecentDocuments(context: android.content.Context, documents: Lis
     }
     context.getSharedPreferences("office_independent", android.content.Context.MODE_PRIVATE)
         .edit().putString("recent_documents", array.toString()).apply()
+}
+
+
+private fun draftKey(uri: Uri): String = "draft:" + uri.toString()
+
+private fun loadDraft(context: android.content.Context, uri: Uri): String? =
+    context.getSharedPreferences("office_independent", android.content.Context.MODE_PRIVATE)
+        .getString(draftKey(uri), null)
+
+private fun saveDraft(context: android.content.Context, uri: Uri, text: String) {
+    context.getSharedPreferences("office_independent", android.content.Context.MODE_PRIVATE)
+        .edit().putString(draftKey(uri), text).apply()
+}
+
+private fun clearDraft(context: android.content.Context, uri: Uri) {
+    context.getSharedPreferences("office_independent", android.content.Context.MODE_PRIVATE)
+        .edit().remove(draftKey(uri)).apply()
 }
