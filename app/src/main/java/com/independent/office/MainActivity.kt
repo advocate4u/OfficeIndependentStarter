@@ -160,6 +160,7 @@ private fun OfficeHome() {
                         editorText = draft
                         status = "Recovered unsaved local draft. Save to write changes to the file."
                     } else {
+                        if (draft != null) clearDraft(context, uri)
                         editorText = diskText
                         status = "Text file opened. Changes are backed up locally; use Save to update the file."
                     }
@@ -305,6 +306,9 @@ private fun OfficeHome() {
                 label = { Text("Text / Markdown / CSV") },
                 placeholder = { Text("Open a text file or start typing…") }
             )
+            val wordCount = editorText.trim().split(Regex("\\s+")).count { it.isNotEmpty() }
+            val lineCount = if (editorText.isEmpty()) 0 else editorText.count { it == '\n' } + 1
+            Text("$wordCount words · ${editorText.length} characters · $lineCount lines", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 Button(
                     onClick = {
@@ -374,7 +378,8 @@ private fun OfficeHome() {
                             val before = editorText
                             editorText = Regex(Regex.escape(findText), RegexOption.IGNORE_CASE).replace(editorText) { replacementText }
                             val changed = before != editorText
-                            status = if (changed) "Replaced matching text. Save to keep changes." else "No matching text found."
+                            if (changed) selectedUri?.let { uri -> if (!isPdf) saveDraft(context, uri, editorText) }
+                            status = if (changed) "Replaced matching text. Local draft updated; save to keep changes in the file." else "No matching text found."
                         }
                         showFindReplaceDialog = false
                     }) { Text("Replace all") }
