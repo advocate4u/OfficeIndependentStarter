@@ -88,6 +88,7 @@ private fun OfficeHome() {
     var lastSavedText by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("Open a text file or PDF to get started.") }
     var isPdf by remember { mutableStateOf(false) }
+    var unsupportedOfficeFile by remember { mutableStateOf(false) }
     var pdfPage by remember { mutableIntStateOf(0) }
     var pdfRotation by remember { mutableIntStateOf(0) }
     var pdfBookmarks by remember { mutableStateOf(emptySet<Int>()) }
@@ -210,6 +211,7 @@ private fun OfficeHome() {
     }
 
     fun openDocument(uri: Uri) {
+        unsupportedOfficeFile = false
         undoStack = emptyList()
         redoStack = emptyList()
         selectedUri = uri
@@ -232,6 +234,7 @@ private fun OfficeHome() {
             val mime = context.contentResolver.getType(uri).orEmpty()
             val textLike = extension in setOf("txt", "md", "csv", "json", "xml", "html", "htm", "log", "yaml", "yml") || mime.startsWith("text/") || mime == "application/json" || mime == "application/xml"
             if (!textLike) {
+                unsupportedOfficeFile = true
                 editorText = ""
                 lastSavedText = ""
                 status = "This format needs a compatible office app. Use Open in compatible app below."
@@ -508,6 +511,37 @@ private fun OfficeHome() {
                     androidx.compose.material3.Icon(Icons.Default.Share, contentDescription = null)
                     Spacer(Modifier.size(8.dp))
                     Text("Share PDF")
+                }
+            }
+        } else if (unsupportedOfficeFile && selectedUri != null) {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    androidx.compose.material3.Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(42.dp))
+                    Text(fileName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                    Text("This file is not plain text. Open it with a compatible office app to preserve its formatting and layout.")
+                    Text("Built-in DOCX/XLSX/PPTX editing is not included yet.", style = MaterialTheme.typography.bodySmall)
+                    OutlinedButton(onClick = {
+                        val uri = selectedUri
+                        if (uri != null) {
+                            val intent = Intent(Intent.ACTION_VIEW).apply {
+                                setDataAndType(uri, context.contentResolver.getType(uri) ?: "*/*")
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            runCatching { context.startActivity(Intent.createChooser(intent, "Open with compatible app")) }
+                                .onFailure { status = "No compatible app found." }
+                        }
+                    }, modifier = Modifier.fillMaxWidth()) { Text("Open in compatible app") }
+                    OutlinedButton(onClick = {
+                        val uri = selectedUri
+                        if (uri != null) {
+                            val intent = Intent(Intent.ACTION_SEND).apply {
+                                type = context.contentResolver.getType(uri) ?: "*/*"
+                                putExtra(Intent.EXTRA_STREAM, uri)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            context.startActivity(Intent.createChooser(intent, "Share document"))
+                        }
+                    }, modifier = Modifier.fillMaxWidth()) { Text("Share document") }
                 }
             }
         } else {
