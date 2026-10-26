@@ -238,7 +238,16 @@ private fun OfficeHome() {
                         } ?: error("Could not create file")
                     }
                 }
-                status = if (saved.isSuccess) "Copy saved successfully." else "Save failed: ${saved.exceptionOrNull()?.message}"
+                if (saved.isSuccess) {
+                    selectedUri = uri
+                    fileName = queryDisplayName(uri, context.contentResolver)
+                    isPdf = false
+                    rememberRecent(uri, fileName, false)
+                    clearDraft(context, uri)
+                    status = "Copy saved and opened for continued editing."
+                } else {
+                    status = "Save failed: ${saved.exceptionOrNull()?.message}"
+                }
             }
         }
     }
