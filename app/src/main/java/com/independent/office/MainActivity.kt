@@ -626,22 +626,31 @@ private fun OfficeHome() {
                 }
                 val allCsvRows = parseCsv(editorText)
                 Text("${allCsvRows.size} rows · ${allCsvRows.maxOfOrNull { it.size } ?: 0} columns", style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(
+                    value = csvSortColumnText,
+                    onValueChange = { csvSortColumnText = it.filter(Char::isDigit).take(3) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("Sort by column number (1 = first column)") }
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     OutlinedButton(onClick = {
                         val rows = parseCsv(editorText)
-                        if (rows.size > 2) {
-                            val sorted = listOf(rows.first()) + rows.drop(1).sortedBy { it.firstOrNull().orEmpty().lowercase() }
+                        val columnIndex = (csvSortColumnText.toIntOrNull() ?: 1) - 1
+                        if (rows.size > 2 && columnIndex >= 0 && columnIndex < (rows.maxOfOrNull { it.size } ?: 0)) {
+                            val sorted = listOf(rows.first()) + rows.drop(1).sortedBy { it.getOrNull(columnIndex).orEmpty().lowercase() }
                             updateEditorText(serializeCsv(sorted))
-                            status = "Sorted data rows A–Z by the first column; first row kept as header."
-                        } else status = "Add at least two data rows before sorting."
+                            status = "Sorted data rows A–Z by column ${columnIndex + 1}; first row kept as header."
+                        } else status = "Enter a valid column number and ensure at least two data rows exist."
                     }, modifier = Modifier.weight(1f)) { Text("Sort A–Z") }
                     OutlinedButton(onClick = {
                         val rows = parseCsv(editorText)
-                        if (rows.size > 2) {
-                            val sorted = listOf(rows.first()) + rows.drop(1).sortedByDescending { it.firstOrNull().orEmpty().lowercase() }
+                        val columnIndex = (csvSortColumnText.toIntOrNull() ?: 1) - 1
+                        if (rows.size > 2 && columnIndex >= 0 && columnIndex < (rows.maxOfOrNull { it.size } ?: 0)) {
+                            val sorted = listOf(rows.first()) + rows.drop(1).sortedByDescending { it.getOrNull(columnIndex).orEmpty().lowercase() }
                             updateEditorText(serializeCsv(sorted))
-                            status = "Sorted data rows Z–A by the first column; first row kept as header."
-                        } else status = "Add at least two data rows before sorting."
+                            status = "Sorted data rows Z–A by column ${columnIndex + 1}; first row kept as header."
+                        } else status = "Enter a valid column number and ensure at least two data rows exist."
                     }, modifier = Modifier.weight(1f)) { Text("Sort Z–A") }
                 }
                 OutlinedTextField(
