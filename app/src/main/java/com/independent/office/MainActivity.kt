@@ -730,6 +730,30 @@ private fun OfficeHome() {
                                 OutlinedButton(onClick = { csvDeleteRowIndex = rowIndex }) {
                                     Text("Delete row")
                                 }
+                                OutlinedButton(
+                                    enabled = rowIndex > 1,
+                                    onClick = {
+                                        val rows = parseCsv(editorText).map { it.toMutableList() }.toMutableList()
+                                        if (rowIndex > 1 && rowIndex in rows.indices) {
+                                            val moving = rows.removeAt(rowIndex)
+                                            rows.add(rowIndex - 1, moving)
+                                            updateEditorText(serializeCsv(rows))
+                                            status = "Moved row up."
+                                        }
+                                    }
+                                ) { Text("↑") }
+                                OutlinedButton(
+                                    enabled = rowIndex < allCsvRows.lastIndex,
+                                    onClick = {
+                                        val rows = parseCsv(editorText).map { it.toMutableList() }.toMutableList()
+                                        if (rowIndex > 0 && rowIndex < rows.lastIndex) {
+                                            val moving = rows.removeAt(rowIndex)
+                                            rows.add(rowIndex + 1, moving)
+                                            updateEditorText(serializeCsv(rows))
+                                            status = "Moved row down."
+                                        }
+                                    }
+                                ) { Text("↓") }
                             }
                             row.take(20).forEachIndexed { columnIndex, cell ->
                                 OutlinedTextField(
