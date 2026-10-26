@@ -339,6 +339,22 @@ private fun OfficeHome() {
                     Text("Save copy")
                 }
             }
+            OutlinedButton(
+                onClick = {
+                    val intent = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_SUBJECT, fileName)
+                        putExtra(Intent.EXTRA_TEXT, editorText)
+                    }
+                    context.startActivity(Intent.createChooser(intent, "Share text"))
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = editorText.isNotEmpty()
+            ) {
+                androidx.compose.material3.Icon(Icons.Default.Share, contentDescription = null)
+                Spacer(Modifier.size(8.dp))
+                Text("Share text")
+            }
             selectedUri?.let { uri ->
                 OutlinedButton(onClick = {
                     val intent = Intent(Intent.ACTION_VIEW).apply {
