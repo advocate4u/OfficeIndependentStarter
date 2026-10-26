@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Divider
@@ -37,6 +38,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -75,6 +77,8 @@ private fun OfficeHome() {
     var pdfPageCount by remember { mutableIntStateOf(0) }
     var pdfBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var zoom by remember { mutableIntStateOf(100) }
+    var showPageDialog by remember { mutableStateOf(false) }
+    var pageInput by remember { mutableStateOf("1") }
 
     fun renderPdf(uri: Uri, pageIndex: Int, scalePercent: Int) {
         scope.launch {
@@ -111,7 +115,7 @@ private fun OfficeHome() {
     val openLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             selectedUri = uri
-            fileName = queryDisplayName(uri)
+            fileName = queryDisplayName(uri, context.contentResolver)
             val type = context.contentResolver.getType(uri).orEmpty()
             isPdf = type == "application/pdf" || fileName.endsWith(".pdf", true)
             if (isPdf) {
@@ -213,6 +217,10 @@ private fun OfficeHome() {
                     selectedUri?.let { renderPdf(it, pdfPage, zoom) }
                 }, modifier = Modifier.weight(1f)) { Text("+ Zoom") }
             }
+            OutlinedButton(
+                onClick = { pageInput = (pdfPage + 1).toString(); showPageDialog = true },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Go to page…") }
             selectedUri?.let { uri ->
                 OutlinedButton(onClick = {
                     val intent = Intent(Intent.ACTION_SEND).apply {
@@ -276,17 +284,48 @@ private fun OfficeHome() {
                 }, modifier = Modifier.fillMaxWidth()) { Text("Open in compatible app") }
             }
         }
+        if (showPageDialog) {
+            AlertDialog(
+                onDismissRequest = { showPageDialog = false },
+                title = { Text("Go to page") },
+                text = {
+                    OutlinedTextField(
+                        value = pageInput,
+                        onValueChange = { pageInput = it.filter(Char::isDigit).take(7) },
+                        label = { Text("Page number (1–$pdfPageCount)") },
+                        singleLine = true
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val target = pageInput.toIntOrNull()
+                        if (target != null && target in 1..pdfPageCount) {
+                            selectedUri?.let { renderPdf(it, target - 1, zoom) }
+                            showPageDialog = false
+                        } else {
+                            status = "Enter a page between 1 and $pdfPageCount."
+                        }
+                    }) { Text("Go") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showPageDialog = false }) { Text("Cancel") }
+                }
+            )
+        }
         Divider()
         Text("DOCX, XLSX and PPTX editing require an office-engine integration and are not yet built in.", style = MaterialTheme.typography.bodySmall)
     }
 }
 
-private fun queryDisplayName(uri: Uri): String {
-    // Display names are supplied by the selected document provider.
+private fun queryDisplayName(uri: Uri, resolver: android.content.ContentResolver): String {
     return try {
-        // The caller's ContentResolver is not available here, so use the URI tail as a safe fallback.
-        uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: "Selected document"
+        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (cursor.moveToFirst() && nameIndex >= 0) cursor.getString(nameIndex) else null
+        }?.takeIf { it.isNotBlank() }
+            ?: uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
+            ?: "Selected document"
     } catch (_: Exception) {
-        "Selected document"
+        uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: "Selected document"
     }
 }
