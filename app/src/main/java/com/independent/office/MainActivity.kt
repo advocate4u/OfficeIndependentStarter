@@ -2,6 +2,7 @@ package com.independent.office
 
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.Matrix
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Bundle
@@ -87,6 +88,7 @@ private fun OfficeHome() {
     var status by remember { mutableStateOf("Open a text file or PDF to get started.") }
     var isPdf by remember { mutableStateOf(false) }
     var pdfPage by remember { mutableIntStateOf(0) }
+    var pdfRotation by remember { mutableIntStateOf(0) }
     var pdfPageCount by remember { mutableIntStateOf(0) }
     var pdfBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var zoom by remember { mutableIntStateOf(100) }
@@ -167,7 +169,15 @@ private fun OfficeHome() {
                                 val height = (page.height * (width.toFloat() / page.width)).toInt().coerceIn(1, 3000)
                                 val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
                                 page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                                Triple(bitmap, renderer.pageCount, safeIndex)
+                                val finalBitmap = if (pdfRotation % 360 == 0) {
+                                    bitmap
+                                } else {
+                                    val matrix = Matrix().apply { postRotate(pdfRotation.toFloat()) }
+                                    Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true).also {
+                                        if (it !== bitmap) bitmap.recycle()
+                                    }
+                                }
+                                Triple(finalBitmap, renderer.pageCount, safeIndex)
                             }
                         }
                     }
@@ -192,6 +202,7 @@ private fun OfficeHome() {
         if (isPdf) {
             editorText = ""
             pdfPage = 0
+            pdfRotation = 0
             zoom = 100
             renderPdf(uri, 0, zoom)
         } else {
@@ -417,6 +428,13 @@ private fun OfficeHome() {
                     modifier = Modifier.weight(1f)
                 ) { Text("Next") }
             }
+            OutlinedButton(
+                onClick = {
+                    pdfRotation = (pdfRotation + 90) % 360
+                    selectedUri?.let { renderPdf(it, pdfPage, zoom) }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Rotate page 90° · ${pdfRotation}°") }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 OutlinedButton(onClick = {
                     zoom = (zoom - 25).coerceAtLeast(50)
