@@ -10,8 +10,12 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
+import android.util.Xml
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayInputStream
+import java.io.StringReader
+import java.util.zip.ZipInputStream
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -91,6 +95,7 @@ private fun OfficeHome() {
     var status by remember { mutableStateOf("Open a text file or PDF to get started.") }
     var isPdf by remember { mutableStateOf(false) }
     var unsupportedOfficeFile by remember { mutableStateOf(false) }
+    var officePreviewOnly by remember { mutableStateOf(false) }
     var pdfPage by remember { mutableIntStateOf(0) }
     var pdfRotation by remember { mutableIntStateOf(0) }
     var pdfBookmarks by remember { mutableStateOf(emptySet<Int>()) }
@@ -218,6 +223,7 @@ private fun OfficeHome() {
 
     fun openDocument(uri: Uri) {
         unsupportedOfficeFile = false
+        officePreviewOnly = false
         undoStack = emptyList()
         redoStack = emptyList()
         selectedUri = uri
@@ -243,6 +249,29 @@ private fun OfficeHome() {
             val mime = context.contentResolver.getType(uri).orEmpty()
             val textLike = extension in setOf("txt", "md", "csv", "json", "xml", "html", "htm", "log", "yaml", "yml") || mime.startsWith("text/") || mime == "application/json" || mime == "application/xml"
             if (!textLike) {
+                if (extension == "docx" || extension == "pptx") {
+                    scope.launch {
+                        val loaded = withContext(Dispatchers.IO) {
+                            runCatching {
+                                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                                    ?: error("Could not read Office document")
+                                extractOfficePreview(bytes, extension)
+                            }
+                        }
+                        if (loaded.isSuccess) {
+                            officePreviewOnly = true
+                            editorText = loaded.getOrDefault("")
+                            lastSavedText = editorText
+                            status = "Read-only preview. Open in a compatible office app to edit and preserve formatting."
+                        } else {
+                            unsupportedOfficeFile = true
+                            editorText = ""
+                            lastSavedText = ""
+                            status = "Could not preview this Office file. Use Open in compatible app below."
+                        }
+                    }
+                    return
+                }
                 unsupportedOfficeFile = true
                 editorText = ""
                 lastSavedText = ""
@@ -576,6 +605,26 @@ private fun OfficeHome() {
                     androidx.compose.material3.Icon(Icons.Default.Share, contentDescription = null)
                     Spacer(Modifier.size(8.dp))
                     Text("Share PDF")
+                }
+            }
+        } else if (officePreviewOnly && selectedUri != null) {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(fileName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                    Text("Read-only text preview", style = MaterialTheme.typography.labelLarge)
+                    Text("Formatting, images, tables, and layout may not be represented here.", style = MaterialTheme.typography.bodySmall)
+                    Text(editorText.ifBlank { "No readable text was found in this document." })
+                    OutlinedButton(onClick = {
+                        val uri = selectedUri
+                        if (uri != null) {
+                            val intent = Intent(Intent.ACTION_VIEW).apply {
+                                setDataAndType(uri, context.contentResolver.getType(uri) ?: if (fileName.endsWith(".docx", true)) "application/vnd.openxmlformats-officedocument.wordprocessingml.document" else "application/vnd.openxmlformats-officedocument.presentationml.presentation")
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            runCatching { context.startActivity(Intent.createChooser(intent, "Open in compatible app")) }
+                                .onFailure { status = "No compatible app found." }
+                        }
+                    }, modifier = Modifier.fillMaxWidth()) { Text("Open in compatible app to edit") }
                 }
             }
         } else if (unsupportedOfficeFile && selectedUri != null) {
@@ -955,6 +1004,44 @@ private fun OfficeHome() {
         }
         Divider()
         Text("DOCX, XLSX and PPTX editing require an office-engine integration and are not yet built in.", style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+private fun extractOfficePreview(bytes: ByteArray, extension: String): String {
+    val entries = linkedMapOf<String, ByteArray>()
+    ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
+        var entry = zip.nextEntry
+        while (entry != null) {
+            val name = entry.name
+            val wanted = (extension == "docx" && name == "word/document.xml") ||
+                (extension == "pptx" && Regex("ppt/slides/slide\\d+\\.xml").matches(name))
+            if (!entry.isDirectory && wanted) entries[name] = zip.readBytes()
+            zip.closeEntry()
+            entry = zip.nextEntry
+        }
+    }
+    fun readText(xmlBytes: ByteArray): String {
+        val parser = Xml.newPullParser()
+        parser.setInput(StringReader(String(xmlBytes, Charsets.UTF_8)))
+        val result = StringBuilder()
+        var event = parser.eventType
+        while (event != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+            if (event == org.xmlpull.v1.XmlPullParser.START_TAG && parser.name == "t") {
+                val value = parser.nextText()
+                if (value.isNotBlank()) result.append(value).append(' ')
+            } else if (event == org.xmlpull.v1.XmlPullParser.END_TAG && (parser.name == "p" || parser.name == "sp")) {
+                result.append('\n')
+            }
+            event = parser.eventType
+        }
+        return result.toString().replace(Regex("[ \\t]+\\n"), "\n").trim()
+    }
+    return when (extension) {
+        "docx" -> readText(entries["word/document.xml"] ?: error("Word document XML was not found"))
+        "pptx" -> entries.entries.sortedBy { Regex("slide(\\d+)").find(it.key)?.groupValues?.get(1)?.toIntOrNull() ?: Int.MAX_VALUE }
+            .mapIndexed { index, entry -> "Slide ${index + 1}\n${readText(entry.value)}" }
+            .joinToString("\n\n").ifBlank { error("No readable slide text was found") }
+        else -> error("Unsupported Office preview type")
     }
 }
 
