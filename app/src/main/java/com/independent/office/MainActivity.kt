@@ -7,6 +7,8 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
+import org.json.JSONArray
+import org.json.JSONObject
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -57,6 +59,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+private data class RecentDocument(val uri: String, val name: String, val isPdf: Boolean)
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -79,6 +83,50 @@ private fun OfficeHome() {
     var zoom by remember { mutableIntStateOf(100) }
     var showPageDialog by remember { mutableStateOf(false) }
     var pageInput by remember { mutableStateOf("1") }
+    var recentFiles by remember { mutableStateOf(loadRecentDocuments(context)) }
+
+    fun rememberRecent(uri: Uri, name: String, pdf: Boolean) {
+        val updated = (listOf(RecentDocument(uri.toString(), name, pdf)) + recentFiles.filterNot { it.uri == uri.toString() }).take(8)
+        recentFiles = updated
+        saveRecentDocuments(context, updated)
+    }
+
+    fun openDocument(uri: Uri) {
+        selectedUri = uri
+        fileName = queryDisplayName(uri, context.contentResolver)
+        isPdf = context.contentResolver.getType(uri) == "application/pdf" || fileName.endsWith(".pdf", true)
+        rememberRecent(uri, fileName, isPdf)
+        if (isPdf) {
+            editorText = ""
+            pdfPage = 0
+            zoom = 100
+            renderPdf(uri, 0, zoom)
+        } else {
+            val extension = fileName.substringAfterLast('.', "").lowercase()
+            val mime = context.contentResolver.getType(uri).orEmpty()
+            val textLike = extension in setOf("txt", "md", "csv", "json", "xml", "html", "htm", "log", "yaml", "yml") || mime.startsWith("text/") || mime == "application/json" || mime == "application/xml"
+            if (!textLike) {
+                editorText = ""
+                status = "This format needs a compatible office app. Use Open in compatible app below."
+                return
+            }
+            scope.launch {
+                val loaded = withContext(Dispatchers.IO) {
+                    runCatching {
+                        context.contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                            ?: error("Could not read file")
+                    }
+                }
+                if (loaded.isSuccess) {
+                    editorText = loaded.getOrDefault("")
+                    status = "Text file opened. Save to keep your changes."
+                } else {
+                    editorText = ""
+                    status = "Could not read this text file."
+                }
+            }
+        }
+    }
 
     fun renderPdf(uri: Uri, pageIndex: Int, scalePercent: Int) {
         scope.launch {
@@ -114,33 +162,8 @@ private fun OfficeHome() {
 
     val openLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
-            selectedUri = uri
-            fileName = queryDisplayName(uri, context.contentResolver)
-            val type = context.contentResolver.getType(uri).orEmpty()
-            isPdf = type == "application/pdf" || fileName.endsWith(".pdf", true)
-            if (isPdf) {
-                editorText = ""
-                pdfPage = 0
-                zoom = 100
-                renderPdf(uri, 0, zoom)
-            } else {
-                scope.launch {
-                    val loaded = withContext(Dispatchers.IO) {
-                        runCatching {
-                            context.contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
-                                ?: error("Could not read file")
-                        }
-                    }
-                    if (loaded.isSuccess) {
-                        editorText = loaded.getOrDefault("")
-                        status = "Text file opened. Save to keep your changes."
-                    } else {
-                        isPdf = false
-                        editorText = ""
-                        status = "This format is not editable here. Use Open in compatible app below."
-                    }
-                }
-            }
+            runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            openDocument(uri)
         }
     }
 
@@ -179,6 +202,26 @@ private fun OfficeHome() {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(fileName, fontWeight = FontWeight.SemiBold)
                 Text(status, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        if (recentFiles.isNotEmpty()) {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Recent files", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    recentFiles.forEach { recent ->
+                        OutlinedButton(
+                            onClick = { openDocument(Uri.parse(recent.uri)) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text((if (recent.isPdf) "PDF · " else "FILE · ") + recent.name, maxLines = 1)
+                        }
+                    }
+                    TextButton(onClick = {
+                        recentFiles = emptyList()
+                        saveRecentDocuments(context, emptyList())
+                        status = "Recent-file history cleared."
+                    }) { Text("Clear history") }
+                }
             }
         }
         if (isPdf && selectedUri != null) {
@@ -328,4 +371,27 @@ private fun queryDisplayName(uri: Uri, resolver: android.content.ContentResolver
     } catch (_: Exception) {
         uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: "Selected document"
     }
+}
+
+
+private fun loadRecentDocuments(context: android.content.Context): List<RecentDocument> {
+    return runCatching {
+        val json = context.getSharedPreferences("office_independent", android.content.Context.MODE_PRIVATE)
+            .getString("recent_documents", "[]") ?: "[]"
+        val array = JSONArray(json)
+        (0 until array.length()).mapNotNull { index ->
+            val item = array.optJSONObject(index) ?: return@mapNotNull null
+            val uri = item.optString("uri").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            RecentDocument(uri, item.optString("name", "Document"), item.optBoolean("isPdf"))
+        }.take(8)
+    }.getOrDefault(emptyList())
+}
+
+private fun saveRecentDocuments(context: android.content.Context, documents: List<RecentDocument>) {
+    val array = JSONArray()
+    documents.forEach { document ->
+        array.put(JSONObject().put("uri", document.uri).put("name", document.name).put("isPdf", document.isPdf))
+    }
+    context.getSharedPreferences("office_independent", android.content.Context.MODE_PRIVATE)
+        .edit().putString("recent_documents", array.toString()).apply()
 }
