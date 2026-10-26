@@ -197,6 +197,8 @@ private fun OfficeHome() {
             pdfBitmap = result.first
             pdfPageCount = result.second
             pdfPage = result.third
+            context.getSharedPreferences("office_independent", android.content.Context.MODE_PRIVATE)
+                .edit().putInt("last_pdf_page:" + uri.toString(), result.third).apply()
             status = "PDF page ${result.third + 1} of ${result.second}"
         }
     }
@@ -211,10 +213,12 @@ private fun OfficeHome() {
         if (isPdf) {
             pdfBookmarks = loadPdfBookmarks(context, uri.toString())
             editorText = ""
-            pdfPage = 0
             pdfRotation = 0
             zoom = 100
-            renderPdf(uri, 0, zoom)
+            val lastPage = context.getSharedPreferences("office_independent", android.content.Context.MODE_PRIVATE)
+                .getInt("last_pdf_page:" + uri.toString(), 0)
+            pdfPage = lastPage
+            renderPdf(uri, lastPage, zoom)
         } else {
             val extension = fileName.substringAfterLast('.', "").lowercase()
             val mime = context.contentResolver.getType(uri).orEmpty()
