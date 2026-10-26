@@ -108,6 +108,7 @@ private fun OfficeHome() {
     var editorFontSize by remember { mutableIntStateOf(context.getSharedPreferences("office_independent", android.content.Context.MODE_PRIVATE).getInt("editor_font_size", 16).coerceIn(10, 32)) }
     var csvTableMode by remember { mutableStateOf(false) }
     var csvFilter by remember { mutableStateOf("") }
+    var csvSortColumnText by remember { mutableStateOf("1") }
     var recentFilter by remember { mutableStateOf("All") }
     var undoStack by remember { mutableStateOf(emptyList<String>()) }
     var redoStack by remember { mutableStateOf(emptyList<String>()) }
@@ -222,6 +223,7 @@ private fun OfficeHome() {
         isPdf = context.contentResolver.getType(uri) == "application/pdf" || fileName.endsWith(".pdf", true)
         csvTableMode = !isPdf && fileName.endsWith(".csv", true)
         csvFilter = ""
+        csvSortColumnText = "1"
         rememberRecent(uri, fileName, isPdf)
         if (isPdf) {
             pdfBookmarks = loadPdfBookmarks(context, uri.toString())
