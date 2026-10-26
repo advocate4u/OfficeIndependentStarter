@@ -63,6 +63,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -97,6 +98,7 @@ private fun OfficeHome() {
     var recentFiles by remember { mutableStateOf(loadRecentDocuments(context)) }
     var favoriteUris by remember { mutableStateOf(loadFavoriteUris(context)) }
     var homeSearch by remember { mutableStateOf("") }
+    var editorFontSize by remember { mutableIntStateOf(16) }
     var recentFilter by remember { mutableStateOf("All") }
     var undoStack by remember { mutableStateOf(emptyList<String>()) }
     var redoStack by remember { mutableStateOf(emptyList<String>()) }
@@ -449,12 +451,19 @@ private fun OfficeHome() {
                 OutlinedButton(onClick = { undoEditor() }, enabled = undoStack.isNotEmpty(), modifier = Modifier.weight(1f)) { Text("Undo") }
                 OutlinedButton(onClick = { redoEditor() }, enabled = redoStack.isNotEmpty(), modifier = Modifier.weight(1f)) { Text("Redo") }
             }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(onClick = { editorFontSize = (editorFontSize - 2).coerceAtLeast(10) }, modifier = Modifier.weight(1f)) { Text("A−") }
+                Text("Text size: ${editorFontSize}sp", modifier = Modifier.weight(1.4f), style = MaterialTheme.typography.bodyMedium)
+                OutlinedButton(onClick = { editorFontSize = (editorFontSize + 2).coerceAtMost(32) }, modifier = Modifier.weight(1f)) { Text("A+") }
+                TextButton(onClick = { editorFontSize = 16 }) { Text("Reset") }
+            }
             OutlinedTextField(
                 value = editorText,
                 onValueChange = { updateEditorText(it) },
                 modifier = Modifier.fillMaxWidth().height(320.dp),
                 label = { Text("Text / Markdown / CSV") },
-                placeholder = { Text("Open a text file or start typing…") }
+                placeholder = { Text("Open a text file or start typing…") },
+                textStyle = androidx.compose.ui.text.TextStyle(fontSize = editorFontSize.sp)
             )
             val wordCount = editorText.trim().split(Regex("\\s+")).count { it.isNotEmpty() }
             val lineCount = if (editorText.isEmpty()) 0 else editorText.count { it == '\n' } + 1
