@@ -85,6 +85,7 @@ private fun OfficeHome() {
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var fileName by remember { mutableStateOf("No file selected") }
     var editorText by remember { mutableStateOf("") }
+    var lastSavedText by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("Open a text file or PDF to get started.") }
     var isPdf by remember { mutableStateOf(false) }
     var pdfPage by remember { mutableIntStateOf(0) }
@@ -239,6 +240,7 @@ private fun OfficeHome() {
                     undoStack = emptyList()
                     redoStack = emptyList()
                     val diskText = loaded.getOrDefault("")
+                    lastSavedText = diskText
                     val draft = loadDraft(context, uri)
                     if (draft != null && draft != diskText) {
                         editorText = draft
@@ -278,6 +280,7 @@ private fun OfficeHome() {
                     selectedUri = uri
                     fileName = queryDisplayName(uri, context.contentResolver)
                     isPdf = false
+                    lastSavedText = editorText
                     rememberRecent(uri, fileName, false)
                     clearDraft(context, uri)
                     status = "Copy saved and opened for continued editing."
@@ -313,7 +316,7 @@ private fun OfficeHome() {
                 Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     androidx.compose.material3.Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(28.dp))
                     Text("Text", fontWeight = FontWeight.SemiBold)
-                    TextButton(onClick = { editorText = ""; undoStack = emptyList(); redoStack = emptyList(); fileName = "Untitled.txt"; selectedUri = null; isPdf = false; status = "New text document. Use Save copy to save it." }) { Text("New") }
+                    TextButton(onClick = { editorText = ""; lastSavedText = ""; undoStack = emptyList(); redoStack = emptyList(); fileName = "Untitled.txt"; selectedUri = null; isPdf = false; status = "New text document. Use Save copy to save it." }) { Text("New") }
                 }
             }
             Card(Modifier.weight(1f)) {
@@ -514,6 +517,9 @@ private fun OfficeHome() {
                 OutlinedButton(onClick = { setEditorFontSize(editorFontSize + 2) }, modifier = Modifier.weight(1f)) { Text("A+") }
                 TextButton(onClick = { setEditorFontSize(16) }) { Text("Reset") }
             }
+            if (editorText != lastSavedText) {
+                Text("Unsaved changes · local draft protected", color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodySmall)
+            }
             OutlinedTextField(
                 value = editorText,
                 onValueChange = { updateEditorText(it) },
@@ -540,7 +546,10 @@ private fun OfficeHome() {
                                         } ?: error("Could not write file")
                                     }
                                 }
-                                if (saved.isSuccess) clearDraft(context, uri)
+                                if (saved.isSuccess) {
+                                    lastSavedText = editorText
+                                    clearDraft(context, uri)
+                                }
                                 status = if (saved.isSuccess) "Saved successfully. Local draft cleared." else "Save failed: ${saved.exceptionOrNull()?.message}"
                             }
                         }
